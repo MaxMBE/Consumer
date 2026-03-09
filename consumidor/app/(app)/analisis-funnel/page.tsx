@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useCampaigns } from "@/context";
+import { useCampaigns, useAuth } from "@/context";
 import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1395,6 +1395,7 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AnalisisFunnelPage() {
+  const { isAuthenticated } = useAuth();
   const [snapshots, setSnapshots] = useState<DaySnapshot[]>([]);
   const [view, setView] = useState<"dashboard" | "tendencias" | "cupones" | "historico">("dashboard");
   const [period, setPeriod] = useState<Period>("semana");
@@ -1476,15 +1477,17 @@ export default function AnalisisFunnelPage() {
             )}
           </p>
         </div>
-        <button
-          onClick={() => setUploadOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-          Cargar día
-        </button>
+        {isAuthenticated && (
+          <button
+            onClick={() => setUploadOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Cargar día
+          </button>
+        )}
       </div>
 
       {/* Tabs */}

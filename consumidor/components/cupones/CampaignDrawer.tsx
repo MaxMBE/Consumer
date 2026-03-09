@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Campaign, CampaignStatus, useCampaigns } from "@/context";
+import { Campaign, CampaignStatus, useCampaigns, useAuth } from "@/context";
 
 const statusLabel: Record<CampaignStatus, string> = {
   Borrador: "Borrador",
@@ -34,6 +34,7 @@ interface Props {
 export default function CampaignDrawer({ campaign, onClose }: Props) {
   const router = useRouter();
   const { confirmCampaign, cancelCampaign } = useCampaigns();
+  const { isAuthenticated } = useAuth();
   const [tab, setTab] = useState<"info" | "config">("info");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -262,8 +263,13 @@ export default function CampaignDrawer({ campaign, onClose }: Props) {
 
         {/* Footer actions */}
         <div className="px-7 py-4 border-t border-gray-100 space-y-2">
+          {!isAuthenticated && (
+            <p className="text-xs text-center text-gray-400 pb-1">
+              <a href="/login" className="text-purple-600 hover:underline font-medium">Iniciá sesión</a> para editar campañas
+            </p>
+          )}
           <div className="flex items-center gap-3">
-            {canConfirm && (
+            {isAuthenticated && canConfirm && (
               <button
                 onClick={() => setShowConfirmDialog(true)}
                 className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-full text-sm font-medium transition-colors"
@@ -271,7 +277,7 @@ export default function CampaignDrawer({ campaign, onClose }: Props) {
                 Confirmar campaña
               </button>
             )}
-            {canEdit && (
+            {isAuthenticated && canEdit && (
               <button
                 onClick={handleEdit}
                 className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 py-2.5 rounded-full text-sm font-medium transition-colors"
@@ -279,7 +285,7 @@ export default function CampaignDrawer({ campaign, onClose }: Props) {
                 Editar
               </button>
             )}
-            {canCancel && (
+            {isAuthenticated && canCancel && (
               <button
                 onClick={() => setShowCancelConfirm(true)}
                 className="flex-1 border border-purple-300 hover:bg-purple-50 text-purple-600 py-2.5 rounded-full text-sm font-medium transition-colors"

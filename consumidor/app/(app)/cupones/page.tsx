@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useCampaigns, Campaign, CampaignStatus } from "@/context";
+import { useCampaigns, useAuth, Campaign, CampaignStatus } from "@/context";
 import { CampaignDrawer } from "@/components/cupones";
 
 const statusConfig: Record<CampaignStatus, { label: string; className: string }> = {
@@ -38,6 +38,7 @@ type FilterKey = "all" | "Activo" | "inactivas" | "Por comenzar" | "Borrador";
 
 export default function CuponesPage() {
   const { campaigns } = useCampaigns();
+  const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
   const [selected, setSelected] = useState<Campaign | null>(null);
@@ -72,13 +73,15 @@ export default function CuponesPage() {
             Gestiona las campañas y cupones asociados para tus clientes
           </p>
         </div>
-        <Link
-          href="/cupones/crear"
-          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors whitespace-nowrap shadow-sm"
-        >
-          Crear nuevo Cupón
-          <span className="text-base font-bold leading-none">+</span>
-        </Link>
+        {isAuthenticated && (
+          <Link
+            href="/cupones/crear"
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors whitespace-nowrap shadow-sm"
+          >
+            Crear nuevo Cupón
+            <span className="text-base font-bold leading-none">+</span>
+          </Link>
+        )}
       </div>
 
       <div className="border-b border-gray-200 mb-6" />
