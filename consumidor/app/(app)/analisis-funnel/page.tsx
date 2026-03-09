@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useCampaigns } from "@/context";
+import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,6 @@ interface DaySnapshot {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "pepsi_funnel_v2";
 
 const STAGE_DEFS = [
   { name: "page_view", label: "Visitas de página" },
@@ -1403,21 +1403,45 @@ export default function AnalisisFunnelPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setSnapshots(JSON.parse(raw));
-    } catch {}
+    supabase
+      .from("funnel_snapshots")
+      .select("*")
+      .order("period_date", { ascending: true })
+      .then(({ data }: { data: Record<string, unknown>[] | null }) => {
+        if (data && data.length > 0) {
+          setSnapshots(data.map((row: Record<string, unknown>): DaySnapshot => ({
+            id: row.id as string,
+            savedAt: row.saved_at as string,
+            periodLabel: row.period_label as string,
+            periodDate: row.period_date as string,
+            source: row.source as string,
+            totalEvents: row.total_events as number,
+            totalUsers: row.total_users as number,
+            eventsPerUser: row.events_per_user as number,
+            funnel: (row.funnel as DayStage[]) ?? [],
+          })));
+        }
+      });
   }, []);
 
-  const persist = (updated: DaySnapshot[]) => {
-    setSnapshots(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  const addSnapshot = async (s: DaySnapshot) => {
+    await supabase.from("funnel_snapshots").insert({
+      id: s.id,
+      saved_at: s.savedAt,
+      period_label: s.periodLabel,
+      period_date: s.periodDate,
+      source: s.source,
+      total_events: s.totalEvents,
+      total_users: s.totalUsers,
+      events_per_user: s.eventsPerUser,
+      funnel: s.funnel,
+    });
+    setSnapshots((prev) => [...prev, s]);
   };
 
-  const addSnapshot = (s: DaySnapshot) => persist([...snapshots, s]);
-  const deleteSnapshot = (id: string) => {
-    const updated = snapshots.filter((s) => s.id !== id);
-    persist(updated);
+  const deleteSnapshot = async (id: string) => {
+    await supabase.from("funnel_snapshots").delete().eq("id", id);
+    setSnapshots((prev) => prev.filter((s) => s.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
