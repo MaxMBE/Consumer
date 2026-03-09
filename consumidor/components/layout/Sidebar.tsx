@@ -5,28 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context";
 
-const navItems = [
-  {
-    section: "Monitoreo",
-    items: [{ label: "Historial de pedidos", href: "/historial", icon: "🕐" }],
-  },
-  {
-    section: "Gestión digital",
-    items: [
-      { label: "Pepsi Chat", href: "/pepsi-chat", icon: "💬" },
-      { label: "Preventa", href: "/preventa", icon: "🏷️" },
-      { label: "Perfilamiento", href: "/perfilamiento", icon: "👤" },
-      { label: "Pepsi Cupones", href: "/cupones", icon: "🎫" },
-      { label: "Análisis Funnel", href: "/analisis-funnel", icon: "📊" },
-    ],
-  },
-  {
-    section: "Administración",
-    items: [
-      { label: "Usuarios", href: "/usuarios", icon: "👥" },
-      { label: "Rutas", href: "/rutas", icon: "🗺️" },
-    ],
-  },
+const PUBLIC_ITEMS = [
+  { label: "Análisis Funnel", href: "/analisis-funnel", icon: "📊" },
+];
+
+const PRIVATE_ITEMS = [
+  { label: "Pepsi Cupones", href: "/cupones", icon: "🎫" },
 ];
 
 export default function Sidebar() {
@@ -61,31 +45,23 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 py-4 overflow-y-auto">
-        {navItems.map((group) => (
-          <div key={group.section} className="mb-4">
-            <p className="px-5 py-1 text-xs font-medium text-gray-400 uppercase tracking-wider">
-              {group.section}
-            </p>
-            {group.items.map((item) => {
-              const isActive =
-                pathname === item.href || pathname.startsWith(item.href + "/");
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
-                    isActive
-                      ? "bg-purple-50 text-purple-700 font-medium border-r-2 border-purple-600"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  }`}
-                >
-                  <span className="text-base">{item.icon}</span>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+        {[...PUBLIC_ITEMS, ...(isAuthenticated ? PRIVATE_ITEMS : [])].map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
+                isActive
+                  ? "bg-purple-50 text-purple-700 font-medium border-r-2 border-purple-600"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              <span className="text-base">{item.icon}</span>
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
       </nav>
 
       {/* User / Auth */}
