@@ -81,33 +81,24 @@ async function extractPDFText(file: File): Promise<string> {
 // sino que extraemos los números del bloque previo y los mapeamos por orden.
 //
 function parseGA4SingleDay(raw: string): Partial<DaySnapshot> {
-  // 1. Totales de resumen: "576 en comparación con 576"
-  const compRx = /(\d[\d.]*)\s+en comparaci[oó]n con\s+(\d[\d.]*)/gi;
-  const comps = [...raw.matchAll(compRx)];
-
-  // 2. Orden de eventos: "1 page_view", "2 scroll", etc.
+  // 1. Orden de eventos: "1 page_view", "2 scroll", etc.
   const ordRx = /\b([1-9])\s+(page_view|scroll|session_start|first_visit|user_engagement|cupon_generado)\b/gi;
   const ordMatches = [...raw.matchAll(ordRx)].sort((a, b) => parseInt(a[1]) - parseInt(b[1]));
 
-  // 3. Sección de números: todo lo que está ANTES del primer nombre con ordinal
+  // 2. Sección de números: todo lo que está ANTES del primer nombre con ordinal
   const listStart = ordMatches.length > 0
     ? Math.min(...ordMatches.map((m) => m.index!))
     : raw.length;
   const numSection = raw.slice(0, listStart);
 
-  // 4. Extraer todos los "N (P%)" del bloque de números
-  //    Formato: "287 (49,83 %)" o "94 (100 %)"
-  //    Cada fila de evento tiene: eventos(%) usuarios(%)
-  //    Para PDF mismo-día: la fila aparece DOS veces (current = previous)
-  //    Para PDF comparado: current row + previous row
-  //    → en ambos casos cada evento genera 4 números: [evt, usr, evt, usr]
+  // 3. Extraer todos los "N (P%)" del bloque de números
   const numRx = /\b(\d+)\s*\(\d+(?:[,.]?\d*)?\s*%\)/g;
   const allNums = [...numSection.matchAll(numRx)].map((m) => parseInt(m[1]));
 
   const eventCount = ordMatches.length || 1;
   const numsPerEvent = allNums.length > 0 ? Math.round(allNums.length / eventCount) : 4;
 
-  // 5. Construir funnel mapeando por posición ordinal
+  // 4. Construir funnel mapeando por posición ordinal
   const funnel: DayStage[] = ordMatches
     .map((m, idx) => {
       const name = m[2].toLowerCase();
@@ -118,7 +109,31 @@ function parseGA4SingleDay(raw: string): Partial<DaySnapshot> {
     })
     .filter((s): s is DayStage => s !== null);
 
-  // 6. Fecha "4 mar 2026"
+  // 5. Totales — formato A: "576 en comparación con 576"
+  //             formato B: "570\n100 % respecto al total" (sin comparación)
+  let totalEvents = 0, totalUsers = 0, eventsPerUser = 0;
+
+  const compRx = /(\d[\d.]*)\s+en comparaci[oó]n con\s+(\d[\d.]*)/gi;
+  const comps = [...raw.matchAll(compRx)];
+
+  if (comps.length >= 2) {
+    // Formato con comparación
+    totalEvents = parseSpNum(comps[0][1]);
+    totalUsers  = parseSpNum(comps[1][1]);
+    eventsPerUser = comps[2] ? parseSpNum(comps[2][1]) : 0;
+  } else {
+    // Formato sin comparación: buscar número seguido de "100 % respecto al total"
+    const respRx = /(\d[\d.,]*)\s+100\s*%\s*respecto al total/gi;
+    const respMatches = [...raw.matchAll(respRx)];
+    if (respMatches[0]) totalEvents = parseSpNum(respMatches[0][1]);
+    if (respMatches[1]) totalUsers  = parseSpNum(respMatches[1][1]);
+    // Eventos por usuario: número antes de "Media"
+    const mediaRx = /(\d[\d.,]+)\s+Media\s/i;
+    const mediaMatch = raw.match(mediaRx);
+    if (mediaMatch) eventsPerUser = parseSpNum(mediaMatch[1]);
+  }
+
+  // 6. Fecha "2 mar 2026"
   const dateRx = /(\d{1,2})\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\s+(\d{4})/gi;
   const dates = [...raw.matchAll(dateRx)];
   const d0 = dates[0];
@@ -129,9 +144,9 @@ function parseGA4SingleDay(raw: string): Partial<DaySnapshot> {
     periodDate: d0
       ? `${d0[3]}-${MONTH_MAP[d0[2].toLowerCase()] ?? "01"}-${d0[1].padStart(2, "0")}`
       : new Date().toISOString().split("T")[0],
-    totalEvents: comps[0] ? parseSpNum(comps[0][1]) : 0,
-    totalUsers: comps[1] ? parseSpNum(comps[1][1]) : 0,
-    eventsPerUser: comps[2] ? parseSpNum(comps[2][1]) : 0,
+    totalEvents,
+    totalUsers,
+    eventsPerUser,
     funnel,
   };
 }
