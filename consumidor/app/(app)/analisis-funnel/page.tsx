@@ -1507,10 +1507,10 @@ export default function AnalisisFunnelPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-        {([["dashboard", "Dashboard"], ["tendencias", "Tendencias"], ["cupones", "Cupones"], ["historico", "Histórico"]] as const).map(([v, label]) => (
+        {(([["dashboard", "Dashboard"], ["tendencias", "Tendencias"], ["historico", "Histórico"], ...(isAuthenticated ? [["cupones", "Cupones"]] : [])] as const) as [string, string][]).map(([v, label]) => (
           <button
             key={v}
-            onClick={() => setView(v)}
+            onClick={() => setView(v as typeof view)}
             className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
               view === v ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
             }`}
