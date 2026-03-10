@@ -927,8 +927,30 @@ const EVENT_COLORS: Record<string, string> = {
   cupon_generado:   "#7c3aed",
 };
 
+const MONTH_NAMES: Record<string, string> = {
+  "01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril",
+  "05": "Mayo", "06": "Junio", "07": "Julio", "08": "Agosto",
+  "09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre",
+};
+
 function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
-  const sorted = [...snapshots].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
+  const allSorted = [...snapshots].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
+
+  // Meses disponibles a partir de los datos (ej: "2026-03")
+  const availableMonths = Array.from(
+    new Set(allSorted.map((s) => s.periodDate.slice(0, 7)))
+  ).sort();
+
+  const latestMonth = availableMonths[availableMonths.length - 1] ?? "";
+  const [selectedMonth, setSelectedMonth] = useState<string>(latestMonth);
+
+  // Sincronizar si llegan nuevos datos
+  const effectiveMonth = availableMonths.includes(selectedMonth) ? selectedMonth : latestMonth;
+
+  const sorted = effectiveMonth
+    ? allSorted.filter((s) => s.periodDate.startsWith(effectiveMonth))
+    : allSorted;
+
   const [visible, setVisible] = useState<Set<string>>(
     () => new Set(["total", ...STAGE_DEFS.map((d) => d.name)])
   );
@@ -984,7 +1006,20 @@ function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
         <h2 className="text-sm font-semibold text-gray-900">
           Número de eventos por Nombre del evento a lo largo del tiempo
         </h2>
-        <span className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white">Día</span>
+        <select
+          value={effectiveMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+        >
+          {availableMonths.map((m) => {
+            const [year, mon] = m.split("-");
+            return (
+              <option key={m} value={m}>
+                {MONTH_NAMES[mon] ?? m} {year}
+              </option>
+            );
+          })}
+        </select>
       </div>
 
       {sorted.length < 2 ? (
@@ -1248,7 +1283,6 @@ function RendimientoView({
   snapshots,
   currentSnap,
   previousSnap,
-  selectedId,
   setSelectedId,
   comparisonId,
   setComparisonId,
@@ -1256,7 +1290,6 @@ function RendimientoView({
   snapshots: DaySnapshot[];
   currentSnap: DaySnapshot | null;
   previousSnap: DaySnapshot | null;
-  selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   comparisonId: string | "none" | null;
   setComparisonId: (id: string | "none" | null) => void;
@@ -1623,7 +1656,6 @@ export default function AnalisisFunnelPage() {
           snapshots={snapshots}
           currentSnap={currentSnap}
           previousSnap={previousSnap}
-          selectedId={selectedId}
           setSelectedId={setSelectedId}
           comparisonId={comparisonId}
           setComparisonId={setComparisonId}
