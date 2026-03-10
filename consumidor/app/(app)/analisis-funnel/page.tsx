@@ -1113,20 +1113,24 @@ function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
   );
 }
 
-function EventsTable({ snapshots }: { snapshots: DaySnapshot[] }) {
-  const latest = [...snapshots].sort((a, b) => b.periodDate.localeCompare(a.periodDate))[0];
-  if (!latest) return null;
+function EventsTableGA4({ snapshots }: { snapshots: DaySnapshot[] }) {
+  if (snapshots.length === 0) return null;
 
-  const totalEvts = latest.totalEvents;
-  const totalUsers = latest.totalUsers;
-  const evtPerUser = latest.eventsPerUser;
+  // Agregar totales de TODOS los días cargados
+  const totalEvts = snapshots.reduce((s, snap) => s + snap.totalEvents, 0);
+  const totalUsers = snapshots.reduce((s, snap) => s + snap.totalUsers, 0);
+  const evtPerUser = totalUsers > 0 ? totalEvts / totalUsers : 0;
 
-  const rows = STAGE_DEFS.map((def, idx) => {
-    const stage = latest.funnel.find((f) => f.eventName === def.name);
-    const evts = stage?.events ?? 0;
+  const rows = STAGE_DEFS.map((def) => {
+    const evts = snapshots.reduce((s, snap) => {
+      return s + (snap.funnel.find((f) => f.eventName === def.name)?.events ?? 0);
+    }, 0);
     const pct = totalEvts > 0 ? ((evts / totalEvts) * 100).toFixed(2).replace(".", ",") : "0,00";
-    return { idx: idx + 1, name: def.name, evts, pct };
-  }).filter((r) => r.evts > 0);
+    return { name: def.name, evts, pct };
+  })
+    .filter((r) => r.evts > 0)
+    .sort((a, b) => b.evts - a.evts)
+    .map((r, i) => ({ ...r, idx: i + 1 }));
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -1143,7 +1147,7 @@ function EventsTable({ snapshots }: { snapshots: DaySnapshot[] }) {
           </div>
         </div>
         <span className="text-xs text-gray-400">
-          Filas por página: 10 · 1–{rows.length} de {rows.length}
+          Filas por página: 10 · 1–{rows.length + 1} de {rows.length + 1}
         </span>
       </div>
 
@@ -1164,8 +1168,9 @@ function EventsTable({ snapshots }: { snapshots: DaySnapshot[] }) {
                 Número de eventos
               </div>
             </th>
-            <th className="text-right px-6 py-3 font-semibold text-gray-600 text-xs">Usuarios activos</th>
-            <th className="text-right px-6 py-3 font-semibold text-gray-600 text-xs">Eventos / usuario activo</th>
+            <th className="text-right px-6 py-3 font-semibold text-gray-600 text-xs">Total de usuarios</th>
+            <th className="text-right px-6 py-3 font-semibold text-gray-600 text-xs">Número de eventos por usuario activo</th>
+            <th className="text-right px-6 py-3 font-semibold text-gray-600 text-xs">Total de ingresos</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -1189,15 +1194,19 @@ function EventsTable({ snapshots }: { snapshots: DaySnapshot[] }) {
             </td>
             <td className="px-6 py-3 text-right font-bold text-gray-900">
               {evtPerUser.toFixed(2)}
+              <br />
+              <span className="text-xs text-gray-400 font-normal">Media 0 %</span>
             </td>
+            <td className="px-6 py-3 text-right font-bold text-gray-900">0,00 $</td>
           </tr>
           {rows.map((row) => (
             <tr key={row.name} className="hover:bg-gray-50/50">
               <td className="px-6 py-3">
                 <div className="flex items-center gap-2">
+                  <input type="checkbox" className="rounded w-3.5 h-3.5" defaultChecked readOnly />
                   <span className="text-xs text-gray-400 w-4 text-right">{row.idx}</span>
                   <span
-                    className="font-medium cursor-pointer"
+                    className="font-medium cursor-pointer hover:underline"
                     style={{ color: EVENT_COLORS[row.name] ?? "#1a73e8" }}
                   >
                     {row.name}
@@ -1210,6 +1219,7 @@ function EventsTable({ snapshots }: { snapshots: DaySnapshot[] }) {
               </td>
               <td className="px-6 py-3 text-right text-gray-400 text-xs">—</td>
               <td className="px-6 py-3 text-right text-gray-400 text-xs">—</td>
+              <td className="px-6 py-3 text-right text-gray-400 text-xs">0,00 $ (—)</td>
             </tr>
           ))}
         </tbody>
@@ -1218,18 +1228,90 @@ function EventsTable({ snapshots }: { snapshots: DaySnapshot[] }) {
   );
 }
 
-function TendenciasView({ snapshots }: { snapshots: DaySnapshot[] }) {
+function DashboardView({ snapshots }: { snapshots: DaySnapshot[] }) {
   if (snapshots.length === 0) {
     return (
       <div className="text-center py-20 text-gray-400 text-sm">
-        Cargá al menos un reporte para ver las tendencias.
+        Cargá al menos un reporte para ver el dashboard.
       </div>
     );
   }
   return (
     <div className="space-y-5">
       <EventsChart snapshots={snapshots} />
-      <EventsTable snapshots={snapshots} />
+      <EventsTableGA4 snapshots={snapshots} />
+    </div>
+  );
+}
+
+function RendimientoView({
+  snapshots,
+  currentSnap,
+  previousSnap,
+  selectedId,
+  setSelectedId,
+  comparisonId,
+  setComparisonId,
+}: {
+  snapshots: DaySnapshot[];
+  currentSnap: DaySnapshot | null;
+  previousSnap: DaySnapshot | null;
+  selectedId: string | null;
+  setSelectedId: (id: string | null) => void;
+  comparisonId: string | "none" | null;
+  setComparisonId: (id: string | "none" | null) => void;
+}) {
+  const sorted = [...snapshots].sort((a, b) => b.periodDate.localeCompare(a.periodDate));
+
+  if (!currentSnap) {
+    return (
+      <div className="text-center py-20 text-gray-400 text-sm">
+        Cargá al menos un reporte para ver el análisis de rendimiento.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Selectores de día y comparación */}
+      <div className="flex items-center gap-4 flex-wrap bg-white border border-gray-200 rounded-xl px-5 py-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-500 whitespace-nowrap">Día analizado:</span>
+          <select
+            value={currentSnap.id}
+            onChange={(e) => {
+              setSelectedId(e.target.value);
+              setComparisonId(null);
+            }}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+          >
+            {sorted.map((s) => (
+              <option key={s.id} value={s.id}>{s.periodLabel}</option>
+            ))}
+          </select>
+        </div>
+
+        {sorted.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 whitespace-nowrap">Comparar con:</span>
+            <select
+              value={comparisonId ?? "auto"}
+              onChange={(e) => setComparisonId(e.target.value === "auto" ? null : e.target.value as string | "none")}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+            >
+              <option value="auto">Día anterior (automático)</option>
+              <option value="none">Sin comparación</option>
+              {sorted
+                .filter((s) => s.id !== currentSnap.id)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>{s.periodLabel}</option>
+                ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <Dashboard current={currentSnap} previous={previousSnap} />
     </div>
   );
 }
@@ -1412,7 +1494,7 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
 export default function AnalisisFunnelPage() {
   const { isAuthenticated } = useAuth();
   const [snapshots, setSnapshots] = useState<DaySnapshot[]>([]);
-  const [view, setView] = useState<"dashboard" | "tendencias" | "cupones" | "historico">("dashboard");
+  const [view, setView] = useState<"dashboard" | "rendimiento" | "historico" | "cupones">("dashboard");
   const [period, setPeriod] = useState<Period>("semana");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [comparisonId, setComparisonId] = useState<string | "none" | null>(null);
@@ -1506,75 +1588,54 @@ export default function AnalisisFunnelPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-        {(([["dashboard", "Dashboard"], ["tendencias", "Tendencias"], ["historico", "Histórico"], ...(isAuthenticated ? [["cupones", "Cupones"]] : [])] as const) as [string, string][]).map(([v, label]) => (
-          <button
-            key={v}
-            onClick={() => setView(v as typeof view)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              view === v ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Day selectors (only in dashboard when at least 1 day loaded) */}
-      {view === "dashboard" && currentSnap && (
-        <div className="flex items-center gap-4 mb-4 flex-wrap">
-          {/* Día analizado */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500 whitespace-nowrap">Día analizado:</span>
-            <select
-              value={currentSnap.id}
-              onChange={(e) => {
-                setSelectedId(e.target.value);
-                setComparisonId(null); // reset comparación al cambiar día
-              }}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
-            >
-              {sorted.map((s) => (
-                <option key={s.id} value={s.id}>{s.periodLabel}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Comparar con (solo si hay más de 1 día) */}
-          {sorted.length > 1 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500 whitespace-nowrap">Comparar con:</span>
-              <select
-                value={comparisonId ?? "auto"}
-                onChange={(e) => setComparisonId(e.target.value === "auto" ? null : e.target.value)}
-                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+      {(() => {
+        const tabs: [string, string][] = [
+          ["dashboard", "Dashboard"],
+          ["rendimiento", "Rendimiento"],
+          ["historico", "Histórico"],
+          ...(isAuthenticated ? [["cupones", "Cupones"] as [string, string]] : []),
+        ];
+        return (
+          <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+            {tabs.map(([v, label]) => (
+              <button
+                key={v}
+                onClick={() => setView(v as typeof view)}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  view === v ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"
+                }`}
               >
-                <option value="auto">Día anterior (automático)</option>
-                <option value="none">Sin comparación</option>
-                {sorted
-                  .filter((s) => s.id !== currentSnap.id)
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>{s.periodLabel}</option>
-                  ))}
-              </select>
-            </div>
-          )}
-        </div>
-      )}
+                {label}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Content */}
-      {!currentSnap && view === "dashboard" && <EmptyState onUpload={() => setUploadOpen(true)} />}
-      {currentSnap && view === "dashboard" && (
-        <Dashboard current={currentSnap} previous={previousSnap} />
+      {view === "dashboard" && (
+        snapshots.length === 0
+          ? <EmptyState onUpload={() => setUploadOpen(true)} />
+          : <DashboardView snapshots={snapshots} />
       )}
-      {view === "tendencias" && <TendenciasView snapshots={snapshots} />}
+      {view === "rendimiento" && (
+        <RendimientoView
+          snapshots={snapshots}
+          currentSnap={currentSnap}
+          previousSnap={previousSnap}
+          selectedId={selectedId}
+          setSelectedId={setSelectedId}
+          comparisonId={comparisonId}
+          setComparisonId={setComparisonId}
+        />
+      )}
       {view === "cupones" && <CuponesView />}
       {view === "historico" && (
         <Historical
           snapshots={snapshots}
           period={period}
           setPeriod={setPeriod}
-          onSelect={(s) => { setSelectedId(s.id); setView("dashboard"); }}
+          onSelect={(s) => { setSelectedId(s.id); setView("rendimiento"); }}
           onDelete={deleteSnapshot}
           selectedId={selectedId}
         />
