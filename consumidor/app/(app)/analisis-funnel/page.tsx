@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useCampaigns, useAuth } from "@/context";
+import type { Campaign } from "@/context/CampaignsContext";
 import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1560,9 +1561,46 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function CuponesView() {
-  const { campaigns } = useCampaigns();
+  const { campaigns, updateCampaign } = useCampaigns();
+  const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{
+    name: string; startDate: string; endDate: string;
+    couponCount: string; couponsUsed: string; status: string; campaignLink: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const openEdit = (c: (typeof campaigns)[0]) => {
+    setEditForm({
+      name: c.name,
+      startDate: c.startDate,
+      endDate: c.endDate,
+      couponCount: String(c.couponCount),
+      couponsUsed: String(c.couponsUsed),
+      status: c.status,
+      campaignLink: c.campaignLink,
+    });
+    setEditingId(c.id);
+  };
+
+  const saveEdit = async () => {
+    if (!editingId || !editForm) return;
+    setSaving(true);
+    await updateCampaign(editingId, {
+      name: editForm.name,
+      startDate: editForm.startDate,
+      endDate: editForm.endDate,
+      couponCount: parseInt(editForm.couponCount) || 0,
+      couponsUsed: parseInt(editForm.couponsUsed) || 0,
+      status: editForm.status as Campaign["status"],
+      campaignLink: editForm.campaignLink,
+    });
+    setSaving(false);
+    setEditingId(null);
+    setEditForm(null);
+  };
 
   const statuses = ["Todos", "Activo", "Por comenzar", "Borrador", "Finalizado", "Cancelado", "Inactivo"];
 
@@ -1628,6 +1666,7 @@ function CuponesView() {
               <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Disponibles</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">Estado</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">URL</th>
+              {isAuthenticated && <th className="px-4 py-3 w-8" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1677,12 +1716,25 @@ function CuponesView() {
                       <span className="text-xs text-gray-300">Sin URL</span>
                     )}
                   </td>
+                  {isAuthenticated && (
+                    <td className="px-4 py-3.5">
+                      <button
+                        onClick={() => openEdit(c)}
+                        className="text-gray-300 hover:text-purple-500 transition-colors"
+                        title="Editar campaña"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                      </button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
+                <td colSpan={isAuthenticated ? 8 : 7} className="text-center py-12 text-gray-400 text-sm">
                   No se encontraron campañas.
                 </td>
               </tr>
@@ -1690,6 +1742,66 @@ function CuponesView() {
           </tbody>
         </table>
       </div>
+
+      {/* Edit modal */}
+      {editingId && editForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">Editar campaña #{editingId}</h2>
+              <button onClick={() => { setEditingId(null); setEditForm(null); }} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+              {([
+                ["name", "Nombre de campaña", "text"],
+                ["startDate", "Fecha inicio", "date"],
+                ["endDate", "Fecha fin", "date"],
+                ["couponCount", "Total cupones", "number"],
+                ["couponsUsed", "Cupones generados", "number"],
+                ["campaignLink", "URL", "text"],
+              ] as const).map(([key, label, type]) => (
+                <div key={key}>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">{label}</label>
+                  <input
+                    type={type}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={editForm[key]}
+                    onChange={(e) => setEditForm((f) => f ? { ...f, [key]: e.target.value } : f)}
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Estado</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                  value={editForm.status}
+                  onChange={(e) => setEditForm((f) => f ? { ...f, status: e.target.value } : f)}
+                >
+                  {["Borrador", "Por comenzar", "Activo", "Inactivo", "Finalizado", "Cancelado"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button onClick={() => { setEditingId(null); setEditForm(null); }} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={saving}
+                className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {saving ? "Guardando..." : "Guardar cambios"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
