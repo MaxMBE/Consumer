@@ -34,6 +34,8 @@ const STAGE_DEFS = [
   { name: "first_visit", label: "Usuarios nuevos" },
   { name: "user_engagement", label: "Usuarios comprometidos" },
   { name: "cupon_generado", label: "Cupones generados" },
+  { name: "registro_usuario", label: "Registros de usuario" },
+  { name: "cupones_canjeados", label: "Cupones canjeados" },
 ];
 
 const MONTH_MAP: Record<string, string> = {
@@ -82,7 +84,7 @@ async function extractPDFText(file: File): Promise<string> {
 //
 function parseGA4SingleDay(raw: string): Partial<DaySnapshot> {
   // 1. Orden de eventos: "1 page_view", "2 scroll", etc.
-  const ordRx = /\b([1-9])\s+(page_view|scroll|session_start|first_visit|user_engagement|cupon_generado)\b/gi;
+  const ordRx = /\b([1-9])\s+(page_view|scroll|session_start|first_visit|user_engagement|cupon_generado|registro_usuario|cupones_canjeados)\b/gi;
   const ordMatches = [...raw.matchAll(ordRx)].sort((a, b) => parseInt(a[1]) - parseInt(b[1]));
 
   // 2. Sección de números: todo lo que está ANTES del primer nombre con ordinal
@@ -918,13 +920,15 @@ function Historical({
 // ─── Tendencias (Events Over Time) ───────────────────────────────────────────
 
 const EVENT_COLORS: Record<string, string> = {
-  total:            "#4285f4",
-  page_view:        "#1a73e8",
+  total:              "#4285f4",
+  page_view:          "#1a73e8",
   scroll:           "#34a853",
   session_start:    "#fbbc04",
-  first_visit:      "#3c4043",
-  user_engagement:  "#ea4335",
-  cupon_generado:   "#7c3aed",
+  first_visit:        "#3c4043",
+  user_engagement:    "#ea4335",
+  cupon_generado:     "#7c3aed",
+  registro_usuario:   "#0f9d58",
+  cupones_canjeados:  "#f4511e",
 };
 
 const MONTH_NAMES: Record<string, string> = {
