@@ -1269,9 +1269,11 @@ function ManualEditModal({
 function EventsTableGA4({
   snapshots,
   onUpdateManual,
+  canEdit,
 }: {
   snapshots: DaySnapshot[];
   onUpdateManual: (snapshotId: string, eventName: string, value: number) => Promise<void>;
+  canEdit: boolean;
 }) {
   const [editingEvent, setEditingEvent] = useState<string | null>(null);
   if (snapshots.length === 0) return null;
@@ -1370,7 +1372,7 @@ function EventsTableGA4({
                   >
                     {row.name}
                   </span>
-                  {MANUAL_EVENTS.has(row.name) && (
+                  {MANUAL_EVENTS.has(row.name) && canEdit && (
                     <button
                       onClick={() => setEditingEvent(row.name)}
                       className="ml-1 text-gray-300 hover:text-purple-500 transition-colors"
@@ -1410,9 +1412,11 @@ function EventsTableGA4({
 function DashboardView({
   snapshots,
   onUpdateManual,
+  canEdit,
 }: {
   snapshots: DaySnapshot[];
   onUpdateManual: (snapshotId: string, eventName: string, value: number) => Promise<void>;
+  canEdit: boolean;
 }) {
   if (snapshots.length === 0) {
     return (
@@ -1424,7 +1428,7 @@ function DashboardView({
   return (
     <div className="space-y-5">
       <EventsChart snapshots={snapshots} />
-      <EventsTableGA4 snapshots={snapshots} onUpdateManual={onUpdateManual} />
+      <EventsTableGA4 snapshots={snapshots} onUpdateManual={onUpdateManual} canEdit={canEdit} />
     </div>
   );
 }
@@ -1814,7 +1818,7 @@ export default function AnalisisFunnelPage() {
       {view === "dashboard" && (
         snapshots.length === 0
           ? <EmptyState onUpload={() => setUploadOpen(true)} />
-          : <DashboardView snapshots={snapshots} onUpdateManual={updateSnapshotEvent} />
+          : <DashboardView snapshots={snapshots} onUpdateManual={updateSnapshotEvent} canEdit={isAuthenticated} />
       )}
       {view === "rendimiento" && (
         <RendimientoView
