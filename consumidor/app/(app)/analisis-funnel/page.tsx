@@ -505,25 +505,60 @@ function UploadModal({
                 </div>
               </div>
 
-              {/* Funnel */}
+              {/* Funnel — datos del PDF */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Funnel digital</h3>
                 <div className="space-y-2">
-                  {form.stages.map((stage, idx) => (
-                    <div key={stage.eventName} className="flex items-center gap-3">
-                      <label className="text-sm text-gray-700 w-44 flex-shrink-0">{stage.label}</label>
-                      <input
-                        className={inputCls}
-                        placeholder="0"
-                        value={stage.events}
-                        onChange={(e) => {
-                          const stages = [...form.stages];
-                          stages[idx] = { ...stages[idx], events: e.target.value };
-                          setForm((f) => ({ ...f, stages }));
-                        }}
-                      />
-                    </div>
-                  ))}
+                  {form.stages
+                    .filter((s) => s.eventName !== "cupones_canjeados")
+                    .map((stage) => {
+                      const idx = form.stages.findIndex((s) => s.eventName === stage.eventName);
+                      return (
+                        <div key={stage.eventName} className="flex items-center gap-3">
+                          <label className="text-sm text-gray-700 w-44 flex-shrink-0">{stage.label}</label>
+                          <input
+                            className={inputCls}
+                            placeholder="0"
+                            value={stage.events}
+                            onChange={(e) => {
+                              const stages = [...form.stages];
+                              stages[idx] = { ...stages[idx], events: e.target.value };
+                              setForm((f) => ({ ...f, stages }));
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Datos manuales */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900">Datos manuales</h3>
+                  <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">Ingreso manual</span>
+                </div>
+                <div className="space-y-2">
+                  {form.stages
+                    .filter((s) => s.eventName === "cupones_canjeados")
+                    .map((stage) => {
+                      const idx = form.stages.findIndex((s) => s.eventName === stage.eventName);
+                      return (
+                        <div key={stage.eventName} className="flex items-center gap-3">
+                          <label className="text-sm text-gray-700 w-44 flex-shrink-0">{stage.label}</label>
+                          <input
+                            className={inputCls}
+                            placeholder="0"
+                            value={stage.events}
+                            onChange={(e) => {
+                              const stages = [...form.stages];
+                              stages[idx] = { ...stages[idx], events: e.target.value };
+                              setForm((f) => ({ ...f, stages }));
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             </div>
