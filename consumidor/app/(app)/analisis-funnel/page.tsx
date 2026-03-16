@@ -1167,7 +1167,6 @@ function EventsTableGA4({ snapshots }: { snapshots: DaySnapshot[] }) {
     const pct = totalEvts > 0 ? ((evts / totalEvts) * 100).toFixed(2).replace(".", ",") : "0,00";
     return { name: def.name, evts, pct };
   })
-    .filter((r) => r.evts > 0)
     .sort((a, b) => b.evts - a.evts)
     .map((r, i) => ({ ...r, idx: i + 1 }));
 
