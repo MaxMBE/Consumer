@@ -307,11 +307,15 @@ function formToSnapshot(f: FormState): DaySnapshot {
 function UploadModal({
   onClose,
   onSave,
+  onUpdate,
+  snapshots,
   existingDates,
   latestDate,
 }: {
   onClose: () => void;
   onSave: (s: DaySnapshot) => void;
+  onUpdate: (existingId: string, s: DaySnapshot) => Promise<void>;
+  snapshots: DaySnapshot[];
   existingDates: string[];
   latestDate: string | null;
 }) {
@@ -320,12 +324,14 @@ function UploadModal({
   const [rawText, setRawText] = useState("");
   const [showRaw, setShowRaw] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [updateMode, setUpdateMode] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const isDuplicate = existingDates.includes(form.periodDate);
+  const existingSnap = snapshots.find((s) => s.periodDate === form.periodDate) ?? null;
   const daysFromLatest = latestDate ? daysBetween(latestDate, form.periodDate) : null;
   const isGap = daysFromLatest !== null && Math.abs(daysFromLatest) !== 1;
-  const canSave = !isDuplicate && form.periodLabel !== "";
+  const canSave = (!isDuplicate || updateMode) && form.periodLabel !== "";
 
   const handleFile = async (file: File) => {
     setLoading(true);
@@ -333,9 +339,23 @@ function UploadModal({
       const text = await extractPDFText(file);
       setRawText(text);
       const parsed = parseGA4SingleDay(text);
-      setForm(parsedToForm(parsed));
+      const f = parsedToForm(parsed);
+      // Preserve manual fields from existing snapshot
+      const existing = snapshots.find((s) => s.periodDate === f.periodDate);
+      if (existing) {
+        setUpdateMode(true);
+        for (const manualEvent of ["cupones_canjeados"]) {
+          const existingVal = existing.funnel.find((ev) => ev.eventName === manualEvent)?.events ?? 0;
+          const idx = f.stages.findIndex((s) => s.eventName === manualEvent);
+          if (idx !== -1) f.stages[idx] = { ...f.stages[idx], events: String(existingVal || "") };
+        }
+      } else {
+        setUpdateMode(false);
+      }
+      setForm(f);
     } catch {
       setForm(emptyForm());
+      setUpdateMode(false);
     } finally {
       setLoading(false);
       setStep("review");
@@ -424,13 +444,31 @@ function UploadModal({
               )}
 
               {/* Validation */}
-              {isDuplicate && (
-                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-                  <svg className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              {isDuplicate && !updateMode && (
+                <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                  <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                   </svg>
-                  <p className="text-sm text-red-700">
-                    Ya existe un reporte para <strong>{form.periodLabel || form.periodDate}</strong>. Cada día debe ser único.
+                  <div className="flex-1">
+                    <p className="text-sm text-amber-700">
+                      Ya existe un reporte para <strong>{form.periodLabel || form.periodDate}</strong>.
+                    </p>
+                    <button
+                      onClick={() => setUpdateMode(true)}
+                      className="mt-1.5 text-xs font-medium text-amber-700 underline hover:text-amber-900"
+                    >
+                      Actualizar reporte existente con estos datos →
+                    </button>
+                  </div>
+                </div>
+              )}
+              {isDuplicate && updateMode && (
+                <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                  <svg className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm text-blue-700">
+                    Modo actualización — se sobreescribirá el reporte de <strong>{form.periodLabel || form.periodDate}</strong>.
                   </p>
                 </div>
               )}
@@ -577,7 +615,14 @@ function UploadModal({
                   Cancelar
                 </button>
                 <button
-                  onClick={() => canSave && onSave(formToSnapshot(form))}
+                  onClick={() => {
+                    if (!canSave) return;
+                    if (updateMode && existingSnap) {
+                      onUpdate(existingSnap.id, formToSnapshot(form)).then(onClose);
+                    } else {
+                      onSave(formToSnapshot(form));
+                    }
+                  }}
                   disabled={!canSave}
                   className={`px-4 py-2 text-sm font-medium rounded-lg ${
                     canSave
@@ -585,7 +630,7 @@ function UploadModal({
                       : "bg-gray-200 text-gray-400 cursor-not-allowed"
                   }`}
                 >
-                  Guardar reporte
+                  {updateMode ? "Actualizar reporte" : "Guardar reporte"}
                 </button>
               </div>
             </>
@@ -1724,6 +1769,20 @@ export default function AnalisisFunnelPage() {
     setSnapshots((prev) => [...prev, s]);
   };
 
+  const replaceSnapshot = async (existingId: string, s: DaySnapshot) => {
+    await supabase.from("funnel_snapshots").update({
+      saved_at: s.savedAt,
+      period_label: s.periodLabel,
+      period_date: s.periodDate,
+      source: s.source,
+      total_events: s.totalEvents,
+      total_users: s.totalUsers,
+      events_per_user: s.eventsPerUser,
+      funnel: s.funnel,
+    }).eq("id", existingId);
+    setSnapshots((prev) => prev.map((snap) => snap.id === existingId ? { ...s, id: existingId } : snap));
+  };
+
   const deleteSnapshot = async (id: string) => {
     await supabase.from("funnel_snapshots").delete().eq("id", id);
     setSnapshots((prev) => prev.filter((s) => s.id !== id));
@@ -1851,6 +1910,11 @@ export default function AnalisisFunnelPage() {
             setView("dashboard");
             setUploadOpen(false);
           }}
+          onUpdate={async (existingId, s) => {
+            await replaceSnapshot(existingId, s);
+            setView("dashboard");
+          }}
+          snapshots={snapshots}
           existingDates={existingDates}
           latestDate={latestDate}
         />
