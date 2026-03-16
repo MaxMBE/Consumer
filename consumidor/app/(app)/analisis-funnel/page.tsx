@@ -1187,7 +1187,93 @@ function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
   );
 }
 
-function EventsTableGA4({ snapshots }: { snapshots: DaySnapshot[] }) {
+const MANUAL_EVENTS = new Set(["registro_usuario", "cupones_canjeados"]);
+
+function ManualEditModal({
+  eventName,
+  snapshots,
+  onUpdate,
+  onClose,
+}: {
+  eventName: string;
+  snapshots: DaySnapshot[];
+  onUpdate: (snapshotId: string, eventName: string, value: number) => Promise<void>;
+  onClose: () => void;
+}) {
+  const def = STAGE_DEFS.find((d) => d.name === eventName)!;
+  const sorted = [...snapshots].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      sorted.map((s) => [
+        s.id,
+        String(s.funnel.find((f) => f.eventName === eventName)?.events ?? ""),
+      ])
+    )
+  );
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    for (const snap of sorted) {
+      const val = parseInt(values[snap.id] || "0", 10) || 0;
+      await onUpdate(snap.id, eventName, val);
+    }
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">{def.label}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Ingreso manual por fecha</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-3">
+          {sorted.map((snap) => (
+            <div key={snap.id} className="flex items-center gap-3">
+              <label className="text-sm text-gray-700 w-28 flex-shrink-0">{snap.periodLabel}</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="0"
+                value={values[snap.id]}
+                onChange={(e) => setValues((v) => ({ ...v, [snap.id]: e.target.value }))}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancelar</button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+          >
+            {saving ? "Guardando..." : "Guardar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventsTableGA4({
+  snapshots,
+  onUpdateManual,
+}: {
+  snapshots: DaySnapshot[];
+  onUpdateManual: (snapshotId: string, eventName: string, value: number) => Promise<void>;
+}) {
+  const [editingEvent, setEditingEvent] = useState<string | null>(null);
   if (snapshots.length === 0) return null;
 
   // Agregar totales de TODOS los días cargados
@@ -1284,6 +1370,17 @@ function EventsTableGA4({ snapshots }: { snapshots: DaySnapshot[] }) {
                   >
                     {row.name}
                   </span>
+                  {MANUAL_EVENTS.has(row.name) && (
+                    <button
+                      onClick={() => setEditingEvent(row.name)}
+                      className="ml-1 text-gray-300 hover:text-purple-500 transition-colors"
+                      title="Editar manualmente"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </td>
               <td className="px-6 py-3 text-right">
@@ -1297,11 +1394,26 @@ function EventsTableGA4({ snapshots }: { snapshots: DaySnapshot[] }) {
           ))}
         </tbody>
       </table>
+
+      {editingEvent && (
+        <ManualEditModal
+          eventName={editingEvent}
+          snapshots={snapshots}
+          onUpdate={onUpdateManual}
+          onClose={() => setEditingEvent(null)}
+        />
+      )}
     </div>
   );
 }
 
-function DashboardView({ snapshots }: { snapshots: DaySnapshot[] }) {
+function DashboardView({
+  snapshots,
+  onUpdateManual,
+}: {
+  snapshots: DaySnapshot[];
+  onUpdateManual: (snapshotId: string, eventName: string, value: number) => Promise<void>;
+}) {
   if (snapshots.length === 0) {
     return (
       <div className="text-center py-20 text-gray-400 text-sm">
@@ -1312,7 +1424,7 @@ function DashboardView({ snapshots }: { snapshots: DaySnapshot[] }) {
   return (
     <div className="space-y-5">
       <EventsChart snapshots={snapshots} />
-      <EventsTableGA4 snapshots={snapshots} />
+      <EventsTableGA4 snapshots={snapshots} onUpdateManual={onUpdateManual} />
     </div>
   );
 }
@@ -1614,6 +1726,21 @@ export default function AnalisisFunnelPage() {
     if (selectedId === id) setSelectedId(null);
   };
 
+  const updateSnapshotEvent = async (snapshotId: string, eventName: string, value: number) => {
+    const snap = snapshots.find((s) => s.id === snapshotId);
+    if (!snap) return;
+    const def = STAGE_DEFS.find((d) => d.name === eventName);
+    if (!def) return;
+    const existingStage = snap.funnel.find((f) => f.eventName === eventName);
+    const newFunnel = existingStage
+      ? snap.funnel.map((f) => f.eventName === eventName ? { ...f, events: value } : f)
+      : [...snap.funnel, { eventName, label: def.label, events: value }];
+    await supabase.from("funnel_snapshots").update({ funnel: newFunnel }).eq("id", snapshotId);
+    setSnapshots((prev) =>
+      prev.map((s) => s.id === snapshotId ? { ...s, funnel: newFunnel } : s)
+    );
+  };
+
   // Ordenado desc por fecha
   const sorted = [...snapshots].sort((a, b) => b.periodDate.localeCompare(a.periodDate));
 
@@ -1687,7 +1814,7 @@ export default function AnalisisFunnelPage() {
       {view === "dashboard" && (
         snapshots.length === 0
           ? <EmptyState onUpload={() => setUploadOpen(true)} />
-          : <DashboardView snapshots={snapshots} />
+          : <DashboardView snapshots={snapshots} onUpdateManual={updateSnapshotEvent} />
       )}
       {view === "rendimiento" && (
         <RendimientoView
