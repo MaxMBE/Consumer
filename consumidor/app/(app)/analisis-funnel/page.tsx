@@ -2377,7 +2377,7 @@ export default function AnalisisFunnelPage() {
           ["dashboard", "Dashboard"],
           ["rendimiento", "Rendimiento"],
           ["historico", "Histórico"],
-          ...(isAuthenticated ? [["cupones", "Cupones"] as [string, string]] : []),
+          ["cupones", "Cupones"],
         ];
         return (
           <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
