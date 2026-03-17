@@ -1583,8 +1583,14 @@ function getCurrencySymbol(code: string) {
   return LATAM_CURRENCIES.find((c) => c.code === code)?.symbol ?? code;
 }
 
+const EMPTY_CAMPAIGN_FORM = {
+  name: "", description: "", startDate: "", endDate: "",
+  couponCount: "", couponsGenerated: "", couponsUsed: "0", status: "Borrador",
+  campaignLink: "", pointsPerCoupon: "0", valuePerCoupon: "", currency: "",
+};
+
 function CuponesView() {
-  const { campaigns, updateCampaign, deleteCampaign } = useCampaigns();
+  const { campaigns, addCampaign, updateCampaign, deleteCampaign } = useCampaigns();
   const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
@@ -1598,6 +1604,9 @@ function CuponesView() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState<typeof EMPTY_CAMPAIGN_FORM>(EMPTY_CAMPAIGN_FORM);
+  const [creating, setCreating] = useState(false);
 
   const openEdit = (c: (typeof campaigns)[0]) => {
     setEditForm({
@@ -1645,6 +1654,29 @@ function CuponesView() {
     setConfirmDeleteId(null);
     setEditingId(null);
     setEditForm(null);
+  };
+
+  const saveCreate = async () => {
+    if (!createForm.name.trim() || !createForm.couponCount) return;
+    setCreating(true);
+    await addCampaign({
+      name: createForm.name.trim(),
+      description: createForm.description.trim(),
+      startDate: createForm.startDate,
+      endDate: createForm.endDate,
+      couponCount: parseInt(createForm.couponCount) || 0,
+      couponsGenerated: createForm.couponsGenerated !== "" ? parseInt(createForm.couponsGenerated) : undefined,
+      pointsPerCoupon: parseInt(createForm.pointsPerCoupon) || 0,
+      status: createForm.status as Campaign["status"],
+      skuIds: [],
+      tenderoTitle: "",
+      tenderoDescription: "",
+      valuePerCoupon: createForm.valuePerCoupon !== "" ? parseFloat(createForm.valuePerCoupon) : undefined,
+      currency: createForm.currency || undefined,
+    });
+    setCreating(false);
+    setShowCreate(false);
+    setCreateForm(EMPTY_CAMPAIGN_FORM);
   };
 
   const statuses = ["Todos", "Activo", "Por comenzar", "Borrador", "Finalizado", "Cancelado", "Inactivo"];
@@ -1698,7 +1730,20 @@ function CuponesView() {
               {statuses.map((s) => <option key={s}>{s}</option>)}
             </select>
           </div>
-          <span className="text-xs text-gray-400">{filtered.length} de {campaigns.length} campañas</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400">{filtered.length} de {campaigns.length} campañas</span>
+            {isAuthenticated && (
+              <button
+                onClick={() => { setCreateForm(EMPTY_CAMPAIGN_FORM); setShowCreate(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Nueva campaña
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -2033,6 +2078,105 @@ function CuponesView() {
                 className="flex-1 px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {deleting ? "Eliminando..." : "Sí, eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create modal */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">Nueva campaña</h2>
+              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+              {([
+                ["name", "Nombre de campaña *", "text"],
+                ["description", "Descripción", "text"],
+                ["startDate", "Fecha inicio", "date"],
+                ["endDate", "Fecha fin", "date"],
+                ["couponCount", "Total cupones *", "number"],
+                ["couponsGenerated", "Cupones generados", "number"],
+                ["campaignLink", "URL", "text"],
+              ] as const).map(([key, label, type]) => (
+                <div key={key}>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">{label}</label>
+                  <input
+                    type={type}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={createForm[key]}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Estado</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, status: e.target.value }))}
+                >
+                  {["Borrador", "Por comenzar", "Activo", "Inactivo", "Finalizado", "Cancelado"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">Indicadores económicos</p>
+                <div className="mb-3">
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Puntos por cupón</label>
+                  <input
+                    type="number" min="0"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="0"
+                    value={createForm.pointsPerCoupon}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, pointsPerCoupon: e.target.value }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1 block">Moneda</label>
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                      value={createForm.currency}
+                      onChange={(e) => setCreateForm((f) => ({ ...f, currency: e.target.value }))}
+                    >
+                      <option value="">Sin moneda</option>
+                      {LATAM_CURRENCIES.map((cur) => (
+                        <option key={cur.code} value={cur.code}>{cur.symbol} — {cur.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1 block">Valor por cupón</label>
+                    <input
+                      type="number" min="0" step="0.01"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="0.00"
+                      value={createForm.valuePerCoupon}
+                      onChange={(e) => setCreateForm((f) => ({ ...f, valuePerCoupon: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button
+                onClick={saveCreate}
+                disabled={creating || !createForm.name.trim() || !createForm.couponCount}
+                className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {creating ? "Creando..." : "Crear campaña"}
               </button>
             </div>
           </div>
