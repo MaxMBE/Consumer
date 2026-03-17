@@ -1701,18 +1701,19 @@ function CuponesView() {
           <span className="text-xs text-gray-400">{filtered.length} de {campaigns.length} campañas</span>
         </div>
 
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[860px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="text-left px-6 py-3 font-semibold text-gray-600 text-xs">Nombre de campaña</th>
-              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Total</th>
-              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Generados</th>
-              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Canjeados</th>
-              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Disponibles</th>
-              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Puntos</th>
-              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Valor</th>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs">Estado</th>
-              <th className="px-4 py-3 w-20" />
+              <th className="text-left px-6 py-3 font-semibold text-gray-500 text-xs w-48">Nombre de campaña</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-24">Total</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-24">Generados</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-28">Canjeados</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-24">Disponibles</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-32">Puntos</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-36">Valor</th>
+              <th className="text-left px-4 py-3 font-semibold text-gray-500 text-xs w-28">Estado</th>
+              <th className="px-4 py-3 w-16" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1727,30 +1728,30 @@ function CuponesView() {
               return (
                 <tr key={c.id} className="hover:bg-gray-50/40 cursor-pointer" onClick={() => setDetailId(c.id)}>
                   <td className="px-6 py-4">
-                    <p className="font-medium text-gray-900">{c.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{c.startDate} – {c.endDate}</p>
+                    <p className="font-medium text-gray-900 leading-snug">{c.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{c.startDate} – {c.endDate}</p>
                   </td>
-                  <td className="px-5 py-4 text-right font-semibold text-gray-900 tabular-nums">
+                  <td className="px-4 py-4 text-right font-semibold text-gray-900 tabular-nums">
                     {c.couponCount.toLocaleString("es-ES")}
                   </td>
-                  <td className="px-5 py-4 text-right tabular-nums text-gray-500">
+                  <td className="px-4 py-4 text-right tabular-nums text-gray-500">
                     {c.couponsGenerated != null ? c.couponsGenerated.toLocaleString("es-ES") : <span className="text-gray-200">—</span>}
                   </td>
-                  <td className="px-5 py-4 text-right tabular-nums">
+                  <td className="px-4 py-4 text-right tabular-nums whitespace-nowrap">
                     <span className="font-semibold text-gray-900">{c.couponsUsed.toLocaleString("es-ES")}</span>
                     {c.couponsUsed > 0 && <span className="ml-1 text-xs text-gray-400">({usedPct}%)</span>}
                   </td>
-                  <td className="px-5 py-4 text-right tabular-nums text-gray-500">
+                  <td className="px-4 py-4 text-right tabular-nums text-gray-500">
                     {available.toLocaleString("es-ES")}
                   </td>
-                  <td className="px-5 py-4 text-right tabular-nums text-xs">
+                  <td className="px-4 py-4 text-right tabular-nums text-xs whitespace-nowrap">
                     {totalPts > 0 ? (
-                      <><span className="font-semibold text-gray-800">{totalPts.toLocaleString("es-ES")}</span><span className="text-gray-400">/{usedPts.toLocaleString("es-ES")}</span></>
+                      <><span className="font-semibold text-gray-800">{totalPts.toLocaleString("es-ES")}</span><span className="text-gray-400"> / {usedPts.toLocaleString("es-ES")}</span></>
                     ) : <span className="text-gray-200">—</span>}
                   </td>
-                  <td className="px-5 py-4 text-right tabular-nums text-xs">
+                  <td className="px-4 py-4 text-right tabular-nums text-xs whitespace-nowrap">
                     {sym && totalVal != null ? (
-                      <><span className="font-semibold text-gray-800">{sym} {totalVal.toLocaleString("es-ES")}</span><span className="text-gray-400">/{usedVal!.toLocaleString("es-ES")}</span></>
+                      <><span className="font-semibold text-gray-800">{sym} {totalVal.toLocaleString("es-ES")}</span><span className="text-gray-400"> / {usedVal!.toLocaleString("es-ES")}</span></>
                     ) : <span className="text-gray-200">—</span>}
                   </td>
                   <td className="px-5 py-4">
@@ -1795,6 +1796,7 @@ function CuponesView() {
             )}
           </tbody>
         </table>
+      </div>
       </div>
 
       {/* Detail modal */}
