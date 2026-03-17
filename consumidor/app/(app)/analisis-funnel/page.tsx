@@ -1662,7 +1662,7 @@ function CuponesView() {
               <th className="text-left px-6 py-3 font-semibold text-gray-600 text-xs">Nombre de campaña</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">ID</th>
               <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Total</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Generados</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Canjeados</th>
               <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Disponibles</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">Estado</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">URL</th>
