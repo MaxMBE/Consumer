@@ -2165,6 +2165,37 @@ function CuponesView() {
                     />
                   </div>
                 </div>
+                {/* Live preview */}
+                {(() => {
+                  const qty = parseInt(createForm.couponCount) || 0;
+                  const pts = parseInt(createForm.pointsPerCoupon) || 0;
+                  const val = parseFloat(createForm.valuePerCoupon) || 0;
+                  const totalPts = qty * pts;
+                  const totalVal = qty * val;
+                  const sym = createForm.currency ? getCurrencySymbol(createForm.currency) : null;
+                  const curLabel = createForm.currency
+                    ? LATAM_CURRENCIES.find((c) => c.code === createForm.currency)?.label ?? createForm.currency
+                    : "—";
+                  if (totalPts === 0 && totalVal === 0) return null;
+                  return (
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      {totalPts > 0 && (
+                        <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                          <p className="text-xs text-purple-500 font-medium mb-1">Pepsi puntos por campaña</p>
+                          <p className="text-xl font-bold text-gray-900">{totalPts.toLocaleString("es-ES")}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">Puntos</p>
+                        </div>
+                      )}
+                      {totalVal > 0 && sym && (
+                        <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+                          <p className="text-xs text-purple-500 font-medium mb-1">Valor de la campaña</p>
+                          <p className="text-xl font-bold text-gray-900">{sym} {totalVal.toLocaleString("es-ES")}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">{curLabel}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
