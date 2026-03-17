@@ -1597,6 +1597,7 @@ function CuponesView() {
   const [saving, setSaving] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const openEdit = (c: (typeof campaigns)[0]) => {
     setEditForm({
@@ -1698,19 +1699,18 @@ function CuponesView() {
           <span className="text-xs text-gray-400">{filtered.length} de {campaigns.length} campañas</span>
         </div>
 
-        <table className="w-full text-sm table-fixed">
+        <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs w-44">Nombre de campaña</th>
-              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-20">Total</th>
-              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-20">Generados</th>
-              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-24">Canjeados</th>
-              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-24">Disponibles</th>
-              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-28">Puntos</th>
-              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-28">Valor</th>
-              <th className="text-left px-3 py-3 font-semibold text-gray-600 text-xs w-28">Estado</th>
-              <th className="text-left px-3 py-3 font-semibold text-gray-600 text-xs">URL</th>
-              {isAuthenticated && <th className="px-3 py-3 w-8" />}
+              <th className="text-left px-6 py-3 font-semibold text-gray-600 text-xs">Nombre de campaña</th>
+              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Total</th>
+              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Generados</th>
+              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Canjeados</th>
+              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Disponibles</th>
+              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Puntos</th>
+              <th className="text-right px-5 py-3 font-semibold text-gray-600 text-xs">Valor</th>
+              <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs">Estado</th>
+              <th className="px-4 py-3 w-20" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1723,81 +1723,70 @@ function CuponesView() {
               const totalVal = c.valuePerCoupon != null ? c.couponCount * c.valuePerCoupon : null;
               const usedVal = c.valuePerCoupon != null ? c.couponsUsed * c.valuePerCoupon : null;
               return (
-                <tr key={c.id} className="hover:bg-gray-50/50">
-                  <td className="px-5 py-3">
-                    <p className="font-medium text-gray-900 truncate">{c.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{c.startDate} – {c.endDate}</p>
+                <tr key={c.id} className="hover:bg-gray-50/40 cursor-pointer" onClick={() => setDetailId(c.id)}>
+                  <td className="px-6 py-4">
+                    <p className="font-medium text-gray-900">{c.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{c.startDate} – {c.endDate}</p>
                   </td>
-                  <td className="px-3 py-3 text-right font-semibold text-gray-900 tabular-nums">
+                  <td className="px-5 py-4 text-right font-semibold text-gray-900 tabular-nums">
                     {c.couponCount.toLocaleString("es-ES")}
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums text-gray-600">
-                    {c.couponsGenerated != null ? c.couponsGenerated.toLocaleString("es-ES") : <span className="text-gray-300">—</span>}
+                  <td className="px-5 py-4 text-right tabular-nums text-gray-500">
+                    {c.couponsGenerated != null ? c.couponsGenerated.toLocaleString("es-ES") : <span className="text-gray-200">—</span>}
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums">
+                  <td className="px-5 py-4 text-right tabular-nums">
                     <span className="font-semibold text-gray-900">{c.couponsUsed.toLocaleString("es-ES")}</span>
-                    {c.couponsUsed > 0 && (
-                      <span className="ml-1 text-xs text-gray-400">({usedPct}%)</span>
-                    )}
+                    {c.couponsUsed > 0 && <span className="ml-1 text-xs text-gray-400">({usedPct}%)</span>}
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums text-gray-600">
+                  <td className="px-5 py-4 text-right tabular-nums text-gray-500">
                     {available.toLocaleString("es-ES")}
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums">
+                  <td className="px-5 py-4 text-right tabular-nums text-xs">
                     {totalPts > 0 ? (
-                      <span className="text-xs">
-                        <span className="font-semibold text-gray-800">{usedPts.toLocaleString("es-ES")}</span>
-                        <span className="text-gray-400">/{totalPts.toLocaleString("es-ES")}</span>
-                      </span>
-                    ) : <span className="text-gray-300 text-xs">—</span>}
+                      <><span className="font-semibold text-gray-800">{usedPts.toLocaleString("es-ES")}</span><span className="text-gray-400">/{totalPts.toLocaleString("es-ES")}</span></>
+                    ) : <span className="text-gray-200">—</span>}
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums">
+                  <td className="px-5 py-4 text-right tabular-nums text-xs">
                     {sym && totalVal != null ? (
-                      <span className="text-xs">
-                        <span className="font-semibold text-gray-800">{sym} {usedVal!.toLocaleString("es-ES")}</span>
-                        <span className="text-gray-400">/{totalVal.toLocaleString("es-ES")}</span>
-                      </span>
-                    ) : <span className="text-gray-300 text-xs">—</span>}
+                      <><span className="font-semibold text-gray-800">{sym} {usedVal!.toLocaleString("es-ES")}</span><span className="text-gray-400">/{totalVal.toLocaleString("es-ES")}</span></>
+                    ) : <span className="text-gray-200">—</span>}
                   </td>
-                  <td className="px-3 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-500"}`}>
+                  <td className="px-5 py-4">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-500"}`}>
                       {c.status}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
-                    {c.campaignLink ? (
-                      <a
-                        href={c.campaignLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline truncate block"
-                        title={c.campaignLink}
-                      >
-                        {c.campaignLink.replace(/^https?:\/\//, "").slice(0, 28)}…
-                      </a>
-                    ) : (
-                      <span className="text-xs text-gray-300">Sin URL</span>
-                    )}
-                  </td>
-                  {isAuthenticated && (
-                    <td className="px-4 py-3.5">
+                  <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2 justify-end">
                       <button
-                        onClick={() => openEdit(c)}
-                        className="text-gray-300 hover:text-purple-500 transition-colors"
-                        title="Editar campaña"
+                        onClick={() => setDetailId(c.id)}
+                        className="text-gray-300 hover:text-blue-500 transition-colors"
+                        title="Ver detalles"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       </button>
-                    </td>
-                  )}
+                      {isAuthenticated && (
+                        <button
+                          onClick={() => openEdit(c)}
+                          className="text-gray-300 hover:text-purple-500 transition-colors"
+                          title="Editar campaña"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               );
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={isAuthenticated ? 9 : 8} className="text-center py-12 text-gray-400 text-sm">
+                <td colSpan={9} className="text-center py-12 text-gray-400 text-sm">
                   No se encontraron campañas.
                 </td>
               </tr>
@@ -1805,6 +1794,100 @@ function CuponesView() {
           </tbody>
         </table>
       </div>
+
+      {/* Detail modal */}
+      {detailId && (() => {
+        const c = campaigns.find((x) => x.id === detailId);
+        if (!c) return null;
+        const totalPts = c.couponCount * c.pointsPerCoupon;
+        const usedPts = c.couponsUsed * c.pointsPerCoupon;
+        const sym = c.currency ? getCurrencySymbol(c.currency) : null;
+        const totalVal = c.valuePerCoupon != null ? c.couponCount * c.valuePerCoupon : null;
+        const usedVal = c.valuePerCoupon != null ? c.couponsUsed * c.valuePerCoupon : null;
+        const available = c.couponCount - c.couponsUsed;
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900">{c.name}</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">{c.startDate} – {c.endDate}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-500"}`}>
+                    {c.status}
+                  </span>
+                  <button onClick={() => setDetailId(null)} className="text-gray-400 hover:text-gray-600 ml-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+                {/* Métricas principales */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: "Total cupones", value: c.couponCount.toLocaleString("es-ES") },
+                    { label: "Disponibles", value: available.toLocaleString("es-ES") },
+                    { label: "Generados", value: c.couponsGenerated != null ? c.couponsGenerated.toLocaleString("es-ES") : "—" },
+                    { label: "Canjeados", value: c.couponsUsed.toLocaleString("es-ES") + (c.couponsUsed > 0 ? ` (${c.couponCount > 0 ? ((c.couponsUsed/c.couponCount)*100).toFixed(0) : 0}%)` : "") },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-gray-50 rounded-xl px-4 py-3">
+                      <p className="text-xs text-gray-500 mb-0.5">{label}</p>
+                      <p className="text-lg font-bold text-gray-900">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Indicadores económicos */}
+                {(totalPts > 0 || (sym && totalVal != null)) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {totalPts > 0 && (
+                      <div className="bg-purple-50 rounded-xl px-4 py-3">
+                        <p className="text-xs text-purple-500 mb-0.5">Puntos</p>
+                        <p className="text-lg font-bold text-purple-900">{usedPts.toLocaleString("es-ES")}<span className="text-sm font-normal text-purple-400">/{totalPts.toLocaleString("es-ES")}</span></p>
+                      </div>
+                    )}
+                    {sym && totalVal != null && (
+                      <div className="bg-blue-50 rounded-xl px-4 py-3">
+                        <p className="text-xs text-blue-500 mb-0.5">Valor ({c.currency})</p>
+                        <p className="text-lg font-bold text-blue-900">{sym} {usedVal!.toLocaleString("es-ES")}<span className="text-sm font-normal text-blue-400">/{totalVal.toLocaleString("es-ES")}</span></p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Info adicional */}
+                <div className="space-y-2 text-sm">
+                  {c.description && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">Descripción</p>
+                      <p className="text-gray-700">{c.description}</p>
+                    </div>
+                  )}
+                  {c.campaignLink && (
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">URL</p>
+                      <a href={c.campaignLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs break-all">{c.campaignLink}</a>
+                    </div>
+                  )}
+                  <div className="flex gap-6 text-xs text-gray-500 pt-1">
+                    <span>Creado por: <strong>{c.createdBy}</strong></span>
+                    <span>Fecha: <strong>{c.createdDate}</strong></span>
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-between">
+                <button onClick={() => setDetailId(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cerrar</button>
+                {isAuthenticated && (
+                  <button onClick={() => { setDetailId(null); openEdit(c); }} className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                    Editar campaña
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Edit modal */}
       {editingId && editForm && (
