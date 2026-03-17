@@ -1690,21 +1690,27 @@ function CuponesView() {
     return matchSearch && matchStatus;
   });
 
-  const totalCoupons = campaigns.reduce((s, c) => s + c.couponCount, 0);
-  const totalGenerated = campaigns.reduce((s, c) => s + (c.couponsGenerated ?? 0), 0);
-  const totalUsed = campaigns.reduce((s, c) => s + c.couponsUsed, 0);
+  // Base for cards: filtered set (by status) but ignoring search text
+  const cardBase = statusFilter === "Todos"
+    ? campaigns
+    : campaigns.filter((c) => c.status === statusFilter);
+
+  const totalCoupons = cardBase.reduce((s, c) => s + c.couponCount, 0);
+  const totalGenerated = cardBase.reduce((s, c) => s + (c.couponsGenerated ?? 0), 0);
+  const totalUsed = cardBase.reduce((s, c) => s + c.couponsUsed, 0);
   const totalAvailable = totalCoupons - totalUsed;
-  const totalActive = campaigns.filter((c) => c.status === "Activo").length;
+  const totalActive = cardBase.filter((c) => c.status === "Activo").length;
+  const isFiltered = statusFilter !== "Todos";
 
   return (
     <div className="space-y-5">
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total emitidos", value: totalCoupons.toLocaleString("es-ES"), sub: `en ${campaigns.length} campañas` },
+          { label: "Total emitidos", value: totalCoupons.toLocaleString("es-ES"), sub: `en ${cardBase.length} campaña${cardBase.length !== 1 ? "s" : ""}${isFiltered ? ` · ${statusFilter}` : ""}` },
           { label: "Cupones generados", value: totalGenerated.toLocaleString("es-ES"), sub: totalCoupons > 0 ? `${((totalGenerated / totalCoupons) * 100).toFixed(1)}% del total` : "—" },
           { label: "Cupones canjeados", value: totalUsed.toLocaleString("es-ES"), sub: totalCoupons > 0 ? `${((totalUsed / totalCoupons) * 100).toFixed(1)}% del total` : "—" },
-          { label: "Campañas activas", value: String(totalActive), sub: `${totalAvailable.toLocaleString("es-ES")} cupones disponibles` },
+          { label: isFiltered ? "Campañas selección" : "Campañas activas", value: isFiltered ? String(cardBase.length) : String(totalActive), sub: `${totalAvailable.toLocaleString("es-ES")} cupones disponibles` },
         ].map(({ label, value, sub }) => (
           <div key={label} className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
             <p className="text-xs text-gray-500 mb-1">{label}</p>
