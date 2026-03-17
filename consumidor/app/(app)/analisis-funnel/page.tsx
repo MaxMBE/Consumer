@@ -1743,12 +1743,12 @@ function CuponesView() {
                   </td>
                   <td className="px-5 py-4 text-right tabular-nums text-xs">
                     {totalPts > 0 ? (
-                      <><span className="font-semibold text-gray-800">{usedPts.toLocaleString("es-ES")}</span><span className="text-gray-400">/{totalPts.toLocaleString("es-ES")}</span></>
+                      <><span className="font-semibold text-gray-800">{totalPts.toLocaleString("es-ES")}</span><span className="text-gray-400">/{usedPts.toLocaleString("es-ES")}</span></>
                     ) : <span className="text-gray-200">—</span>}
                   </td>
                   <td className="px-5 py-4 text-right tabular-nums text-xs">
                     {sym && totalVal != null ? (
-                      <><span className="font-semibold text-gray-800">{sym} {usedVal!.toLocaleString("es-ES")}</span><span className="text-gray-400">/{totalVal.toLocaleString("es-ES")}</span></>
+                      <><span className="font-semibold text-gray-800">{sym} {totalVal.toLocaleString("es-ES")}</span><span className="text-gray-400">/{usedVal!.toLocaleString("es-ES")}</span></>
                     ) : <span className="text-gray-200">—</span>}
                   </td>
                   <td className="px-5 py-4">
@@ -1845,13 +1845,13 @@ function CuponesView() {
                     {totalPts > 0 && (
                       <div className="bg-purple-50 rounded-xl px-4 py-3">
                         <p className="text-xs text-purple-500 mb-0.5">Puntos</p>
-                        <p className="text-lg font-bold text-purple-900">{usedPts.toLocaleString("es-ES")}<span className="text-sm font-normal text-purple-400">/{totalPts.toLocaleString("es-ES")}</span></p>
+                        <p className="text-lg font-bold text-purple-900">{totalPts.toLocaleString("es-ES")}<span className="text-sm font-normal text-purple-400">/{usedPts.toLocaleString("es-ES")}</span></p>
                       </div>
                     )}
                     {sym && totalVal != null && (
                       <div className="bg-blue-50 rounded-xl px-4 py-3">
                         <p className="text-xs text-blue-500 mb-0.5">Valor ({c.currency})</p>
-                        <p className="text-lg font-bold text-blue-900">{sym} {usedVal!.toLocaleString("es-ES")}<span className="text-sm font-normal text-blue-400">/{totalVal.toLocaleString("es-ES")}</span></p>
+                        <p className="text-lg font-bold text-blue-900">{sym} {totalVal.toLocaleString("es-ES")}<span className="text-sm font-normal text-blue-400">/{usedVal!.toLocaleString("es-ES")}</span></p>
                       </div>
                     )}
                   </div>
