@@ -28,6 +28,9 @@ export interface Campaign {
   tenderoDescription: string;
   materialName?: string;
   campaignLink: string;
+  valuePerCoupon?: number;
+  currency?: string;
+  couponsGenerated?: number;
 }
 
 interface CampaignsContextType {
@@ -37,6 +40,7 @@ interface CampaignsContextType {
   updateCampaign: (id: string, updates: Partial<Campaign>) => Promise<void>;
   confirmCampaign: (id: string) => Promise<void>;
   cancelCampaign: (id: string) => Promise<void>;
+  deleteCampaign: (id: string) => Promise<void>;
 }
 
 const CampaignsContext = createContext<CampaignsContextType | null>(null);
@@ -61,6 +65,9 @@ function rowToCampaign(row: Record<string, unknown>): Campaign {
     tenderoDescription: (row.tendero_description as string) ?? "",
     materialName: row.material_name as string | undefined,
     campaignLink: (row.campaign_link as string) ?? "",
+    valuePerCoupon: (row.value_per_coupon as number) ?? undefined,
+    currency: (row.currency as string) ?? undefined,
+    couponsGenerated: (row.coupons_generated as number) ?? undefined,
   };
 }
 
@@ -82,6 +89,9 @@ function campaignToRow(c: Campaign) {
     tendero_description: c.tenderoDescription,
     material_name: c.materialName ?? null,
     campaign_link: c.campaignLink,
+    value_per_coupon: c.valuePerCoupon ?? null,
+    currency: c.currency ?? null,
+    coupons_generated: c.couponsGenerated ?? null,
   };
 }
 
@@ -246,9 +256,14 @@ export function CampaignsProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  async function deleteCampaign(id: string): Promise<void> {
+    await supabase.from("campaigns").delete().eq("id", id);
+    setCampaigns((prev) => prev.filter((c) => c.id !== id));
+  }
+
   return (
     <CampaignsContext.Provider
-      value={{ campaigns, loading, addCampaign, updateCampaign, confirmCampaign, cancelCampaign }}
+      value={{ campaigns, loading, addCampaign, updateCampaign, confirmCampaign, cancelCampaign, deleteCampaign }}
     >
       {children}
     </CampaignsContext.Provider>

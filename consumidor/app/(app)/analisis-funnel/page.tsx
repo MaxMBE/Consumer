@@ -1560,17 +1560,43 @@ const STATUS_COLORS: Record<string, string> = {
   Inactivo:       "bg-gray-100 text-gray-400",
 };
 
+const LATAM_CURRENCIES = [
+  { code: "GTQ", label: "Quetzal (Guatemala)", symbol: "Q" },
+  { code: "MXN", label: "Peso Mexicano (México)", symbol: "$" },
+  { code: "COP", label: "Peso Colombiano (Colombia)", symbol: "$" },
+  { code: "ARS", label: "Peso Argentino (Argentina)", symbol: "$" },
+  { code: "CLP", label: "Peso Chileno (Chile)", symbol: "$" },
+  { code: "PEN", label: "Sol (Perú)", symbol: "S/" },
+  { code: "BRL", label: "Real (Brasil)", symbol: "R$" },
+  { code: "HNL", label: "Lempira (Honduras)", symbol: "L" },
+  { code: "NIO", label: "Córdoba (Nicaragua)", symbol: "C$" },
+  { code: "CRC", label: "Colón (Costa Rica)", symbol: "₡" },
+  { code: "DOP", label: "Peso Dominicano (Rep. Dom.)", symbol: "RD$" },
+  { code: "BOB", label: "Boliviano (Bolivia)", symbol: "Bs." },
+  { code: "PYG", label: "Guaraní (Paraguay)", symbol: "₲" },
+  { code: "UYU", label: "Peso Uruguayo (Uruguay)", symbol: "$U" },
+  { code: "PAB", label: "Balboa (Panamá)", symbol: "B/." },
+  { code: "USD", label: "Dólar (EEUU)", symbol: "$" },
+];
+
+function getCurrencySymbol(code: string) {
+  return LATAM_CURRENCIES.find((c) => c.code === code)?.symbol ?? code;
+}
+
 function CuponesView() {
-  const { campaigns, updateCampaign } = useCampaigns();
+  const { campaigns, updateCampaign, deleteCampaign } = useCampaigns();
   const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
     name: string; startDate: string; endDate: string;
-    couponCount: string; couponsUsed: string; status: string; campaignLink: string;
+    couponCount: string; couponsGenerated: string; couponsUsed: string; status: string; campaignLink: string;
+    valuePerCoupon: string; currency: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const openEdit = (c: (typeof campaigns)[0]) => {
     setEditForm({
@@ -1578,9 +1604,12 @@ function CuponesView() {
       startDate: c.startDate,
       endDate: c.endDate,
       couponCount: String(c.couponCount),
+      couponsGenerated: c.couponsGenerated != null ? String(c.couponsGenerated) : "",
       couponsUsed: String(c.couponsUsed),
       status: c.status,
       campaignLink: c.campaignLink,
+      valuePerCoupon: c.valuePerCoupon != null ? String(c.valuePerCoupon) : "",
+      currency: c.currency ?? "GTQ",
     });
     setEditingId(c.id);
   };
@@ -1593,11 +1622,24 @@ function CuponesView() {
       startDate: editForm.startDate,
       endDate: editForm.endDate,
       couponCount: parseInt(editForm.couponCount) || 0,
+      couponsGenerated: editForm.couponsGenerated !== "" ? parseInt(editForm.couponsGenerated) : undefined,
       couponsUsed: parseInt(editForm.couponsUsed) || 0,
       status: editForm.status as Campaign["status"],
       campaignLink: editForm.campaignLink,
+      valuePerCoupon: editForm.valuePerCoupon !== "" ? parseFloat(editForm.valuePerCoupon) : undefined,
+      currency: editForm.currency || undefined,
     });
     setSaving(false);
+    setEditingId(null);
+    setEditForm(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!confirmDeleteId) return;
+    setDeleting(true);
+    await deleteCampaign(confirmDeleteId);
+    setDeleting(false);
+    setConfirmDeleteId(null);
     setEditingId(null);
     setEditForm(null);
   };
@@ -1662,8 +1704,11 @@ function CuponesView() {
               <th className="text-left px-6 py-3 font-semibold text-gray-600 text-xs">Nombre de campaña</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">ID</th>
               <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Total</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Generados</th>
               <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Canjeados</th>
               <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Disponibles</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Puntos</th>
+              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Valor</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">Estado</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">URL</th>
               {isAuthenticated && <th className="px-4 py-3 w-8" />}
@@ -1673,6 +1718,11 @@ function CuponesView() {
             {filtered.map((c) => {
               const available = c.couponCount - c.couponsUsed;
               const usedPct = c.couponCount > 0 ? ((c.couponsUsed / c.couponCount) * 100).toFixed(0) : "0";
+              const totalPts = c.couponCount * c.pointsPerCoupon;
+              const usedPts = c.couponsUsed * c.pointsPerCoupon;
+              const sym = c.currency ? getCurrencySymbol(c.currency) : null;
+              const totalVal = c.valuePerCoupon != null ? c.couponCount * c.valuePerCoupon : null;
+              const usedVal = c.valuePerCoupon != null ? c.couponsUsed * c.valuePerCoupon : null;
               return (
                 <tr key={c.id} className="hover:bg-gray-50/50">
                   <td className="px-6 py-3.5">
@@ -1687,6 +1737,9 @@ function CuponesView() {
                   <td className="px-4 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
                     {c.couponCount.toLocaleString("es-ES")}
                   </td>
+                  <td className="px-4 py-3.5 text-right tabular-nums text-gray-600">
+                    {c.couponsGenerated != null ? c.couponsGenerated.toLocaleString("es-ES") : <span className="text-gray-300">—</span>}
+                  </td>
                   <td className="px-4 py-3.5 text-right tabular-nums">
                     <span className="font-semibold text-gray-900">{c.couponsUsed.toLocaleString("es-ES")}</span>
                     {c.couponsUsed > 0 && (
@@ -1695,6 +1748,22 @@ function CuponesView() {
                   </td>
                   <td className="px-4 py-3.5 text-right tabular-nums text-gray-600">
                     {available.toLocaleString("es-ES")}
+                  </td>
+                  <td className="px-4 py-3.5 text-right tabular-nums">
+                    {totalPts > 0 ? (
+                      <div className="text-xs">
+                        <span className="font-semibold text-gray-800">{usedPts.toLocaleString("es-ES")}</span>
+                        <span className="text-gray-400">/{totalPts.toLocaleString("es-ES")}</span>
+                      </div>
+                    ) : <span className="text-gray-300 text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3.5 text-right tabular-nums">
+                    {sym && totalVal != null ? (
+                      <div className="text-xs">
+                        <span className="font-semibold text-gray-800">{sym} {usedVal!.toLocaleString("es-ES")}</span>
+                        <span className="text-gray-400">/{totalVal.toLocaleString("es-ES")}</span>
+                      </div>
+                    ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-500"}`}>
@@ -1734,7 +1803,7 @@ function CuponesView() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={isAuthenticated ? 8 : 7} className="text-center py-12 text-gray-400 text-sm">
+                <td colSpan={isAuthenticated ? 10 : 9} className="text-center py-12 text-gray-400 text-sm">
                   No se encontraron campañas.
                 </td>
               </tr>
@@ -1761,7 +1830,8 @@ function CuponesView() {
                 ["startDate", "Fecha inicio", "date"],
                 ["endDate", "Fecha fin", "date"],
                 ["couponCount", "Total cupones", "number"],
-                ["couponsUsed", "Cupones generados", "number"],
+                ["couponsGenerated", "Cupones generados", "number"],
+                ["couponsUsed", "Cupones canjeados", "number"],
                 ["campaignLink", "URL", "text"],
               ] as const).map(([key, label, type]) => (
                 <div key={key}>
@@ -1786,17 +1856,91 @@ function CuponesView() {
                   ))}
                 </select>
               </div>
+              {/* Indicadores económicos */}
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">Indicadores económicos</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1 block">Moneda</label>
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                      value={editForm.currency}
+                      onChange={(e) => setEditForm((f) => f ? { ...f, currency: e.target.value } : f)}
+                    >
+                      <option value="">Sin moneda</option>
+                      {LATAM_CURRENCIES.map((cur) => (
+                        <option key={cur.code} value={cur.code}>{cur.symbol} — {cur.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-500 mb-1 block">Valor por cupón</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      placeholder="0.00"
+                      value={editForm.valuePerCoupon}
+                      onChange={(e) => setEditForm((f) => f ? { ...f, valuePerCoupon: e.target.value } : f)}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button onClick={() => { setEditingId(null); setEditForm(null); }} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-between items-center">
+              <button
+                onClick={() => setConfirmDeleteId(editingId)}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Eliminar campaña
+              </button>
+              <div className="flex gap-3">
+                <button onClick={() => { setEditingId(null); setEditForm(null); }} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                  Cancelar
+                </button>
+                <button
+                  onClick={saveEdit}
+                  disabled={saving}
+                  className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {saving ? "Guardando..." : "Guardar cambios"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm delete modal */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mx-auto mb-4">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 text-center mb-2">¿Eliminar campaña?</h3>
+            <p className="text-sm text-gray-500 text-center mb-6">
+              Esta acción no se puede deshacer. La campaña #{confirmDeleteId} será eliminada permanentemente.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
                 Cancelar
               </button>
               <button
-                onClick={saveEdit}
-                disabled={saving}
-                className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {saving ? "Guardando..." : "Guardar cambios"}
+                {deleting ? "Eliminando..." : "Sí, eliminar"}
               </button>
             </div>
           </div>
