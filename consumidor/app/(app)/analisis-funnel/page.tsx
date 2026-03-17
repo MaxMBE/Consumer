@@ -1691,17 +1691,20 @@ function CuponesView() {
   });
 
   const totalCoupons = campaigns.reduce((s, c) => s + c.couponCount, 0);
+  const totalGenerated = campaigns.reduce((s, c) => s + (c.couponsGenerated ?? 0), 0);
   const totalUsed = campaigns.reduce((s, c) => s + c.couponsUsed, 0);
+  const totalAvailable = totalCoupons - totalUsed;
   const totalActive = campaigns.filter((c) => c.status === "Activo").length;
 
   return (
     <div className="space-y-5">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total cupones disponibles", value: (totalCoupons - totalUsed).toLocaleString("es-ES"), sub: `de ${totalCoupons.toLocaleString("es-ES")} emitidos` },
-          { label: "Cupones generados", value: totalUsed.toLocaleString("es-ES"), sub: totalCoupons > 0 ? `${((totalUsed / totalCoupons) * 100).toFixed(1)}% del total` : "—" },
-          { label: "Campañas activas", value: String(totalActive), sub: `de ${campaigns.length} campañas` },
+          { label: "Total emitidos", value: totalCoupons.toLocaleString("es-ES"), sub: `en ${campaigns.length} campañas` },
+          { label: "Cupones generados", value: totalGenerated.toLocaleString("es-ES"), sub: totalCoupons > 0 ? `${((totalGenerated / totalCoupons) * 100).toFixed(1)}% del total` : "—" },
+          { label: "Cupones canjeados", value: totalUsed.toLocaleString("es-ES"), sub: totalCoupons > 0 ? `${((totalUsed / totalCoupons) * 100).toFixed(1)}% del total` : "—" },
+          { label: "Campañas activas", value: String(totalActive), sub: `${totalAvailable.toLocaleString("es-ES")} cupones disponibles` },
         ].map(({ label, value, sub }) => (
           <div key={label} className="bg-white rounded-2xl border border-gray-200 px-5 py-4">
             <p className="text-xs text-gray-500 mb-1">{label}</p>
