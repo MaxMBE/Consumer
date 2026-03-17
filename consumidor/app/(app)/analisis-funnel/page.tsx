@@ -1698,20 +1698,19 @@ function CuponesView() {
           <span className="text-xs text-gray-400">{filtered.length} de {campaigns.length} campañas</span>
         </div>
 
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="text-left px-6 py-3 font-semibold text-gray-600 text-xs">Nombre de campaña</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">ID</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Total</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Generados</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Canjeados</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Disponibles</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Puntos</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-600 text-xs">Valor</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">Estado</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600 text-xs">URL</th>
-              {isAuthenticated && <th className="px-4 py-3 w-8" />}
+              <th className="text-left px-5 py-3 font-semibold text-gray-600 text-xs w-44">Nombre de campaña</th>
+              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-20">Total</th>
+              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-20">Generados</th>
+              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-24">Canjeados</th>
+              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-24">Disponibles</th>
+              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-28">Puntos</th>
+              <th className="text-right px-3 py-3 font-semibold text-gray-600 text-xs w-28">Valor</th>
+              <th className="text-left px-3 py-3 font-semibold text-gray-600 text-xs w-28">Estado</th>
+              <th className="text-left px-3 py-3 font-semibold text-gray-600 text-xs">URL</th>
+              {isAuthenticated && <th className="px-3 py-3 w-8" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1725,61 +1724,56 @@ function CuponesView() {
               const usedVal = c.valuePerCoupon != null ? c.couponsUsed * c.valuePerCoupon : null;
               return (
                 <tr key={c.id} className="hover:bg-gray-50/50">
-                  <td className="px-6 py-3.5">
-                    <p className="font-medium text-gray-900">{c.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{c.startDate} – {c.endDate}</p>
+                  <td className="px-5 py-3">
+                    <p className="font-medium text-gray-900 truncate">{c.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{c.startDate} – {c.endDate}</p>
                   </td>
-                  <td className="px-4 py-3.5">
-                    <span className="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                      #{c.id}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5 text-right font-semibold text-gray-900 tabular-nums">
+                  <td className="px-3 py-3 text-right font-semibold text-gray-900 tabular-nums">
                     {c.couponCount.toLocaleString("es-ES")}
                   </td>
-                  <td className="px-4 py-3.5 text-right tabular-nums text-gray-600">
+                  <td className="px-3 py-3 text-right tabular-nums text-gray-600">
                     {c.couponsGenerated != null ? c.couponsGenerated.toLocaleString("es-ES") : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-3.5 text-right tabular-nums">
+                  <td className="px-3 py-3 text-right tabular-nums">
                     <span className="font-semibold text-gray-900">{c.couponsUsed.toLocaleString("es-ES")}</span>
                     {c.couponsUsed > 0 && (
-                      <span className="ml-1.5 text-xs text-gray-400">({usedPct}%)</span>
+                      <span className="ml-1 text-xs text-gray-400">({usedPct}%)</span>
                     )}
                   </td>
-                  <td className="px-4 py-3.5 text-right tabular-nums text-gray-600">
+                  <td className="px-3 py-3 text-right tabular-nums text-gray-600">
                     {available.toLocaleString("es-ES")}
                   </td>
-                  <td className="px-4 py-3.5 text-right tabular-nums">
+                  <td className="px-3 py-3 text-right tabular-nums">
                     {totalPts > 0 ? (
-                      <div className="text-xs">
+                      <span className="text-xs">
                         <span className="font-semibold text-gray-800">{usedPts.toLocaleString("es-ES")}</span>
                         <span className="text-gray-400">/{totalPts.toLocaleString("es-ES")}</span>
-                      </div>
+                      </span>
                     ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3.5 text-right tabular-nums">
+                  <td className="px-3 py-3 text-right tabular-nums">
                     {sym && totalVal != null ? (
-                      <div className="text-xs">
+                      <span className="text-xs">
                         <span className="font-semibold text-gray-800">{sym} {usedVal!.toLocaleString("es-ES")}</span>
                         <span className="text-gray-400">/{totalVal.toLocaleString("es-ES")}</span>
-                      </div>
+                      </span>
                     ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3.5">
+                  <td className="px-3 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[c.status] ?? "bg-gray-100 text-gray-500"}`}>
                       {c.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3.5 max-w-[180px]">
+                  <td className="px-3 py-3">
                     {c.campaignLink ? (
                       <a
                         href={c.campaignLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline font-mono truncate block"
+                        className="text-xs text-blue-600 hover:underline truncate block"
                         title={c.campaignLink}
                       >
-                        {c.campaignLink.replace(/^https?:\/\//, "").slice(0, 32)}…
+                        {c.campaignLink.replace(/^https?:\/\//, "").slice(0, 28)}…
                       </a>
                     ) : (
                       <span className="text-xs text-gray-300">Sin URL</span>
@@ -1803,7 +1797,7 @@ function CuponesView() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={isAuthenticated ? 10 : 9} className="text-center py-12 text-gray-400 text-sm">
+                <td colSpan={isAuthenticated ? 9 : 8} className="text-center py-12 text-gray-400 text-sm">
                   No se encontraron campañas.
                 </td>
               </tr>
