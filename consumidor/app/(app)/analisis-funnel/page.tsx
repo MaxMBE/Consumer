@@ -2226,6 +2226,228 @@ function CuponesView() {
   );
 }
 
+// ─── PDF Report ───────────────────────────────────────────────────────────────
+
+const STATUS_PRINT_COLOR: Record<string, { bg: string; text: string }> = {
+  Activo:         { bg: "#f0fdf4", text: "#16a34a" },
+  "Por comenzar": { bg: "#eff6ff", text: "#2563eb" },
+  Borrador:       { bg: "#fffbeb", text: "#d97706" },
+  Cancelado:      { bg: "#fef2f2", text: "#dc2626" },
+  Finalizado:     { bg: "#f9fafb", text: "#6b7280" },
+  Inactivo:       { bg: "#f9fafb", text: "#9ca3af" },
+};
+
+function PrintReport({ snapshots }: { snapshots: DaySnapshot[] }) {
+  const { campaigns } = useCampaigns();
+
+  const today = new Date();
+  const currentMonth = today.toISOString().slice(0, 7);
+  const monthSnaps = snapshots.filter((s) => s.periodDate.startsWith(currentMonth));
+  const reportSnaps = monthSnaps.length > 0 ? monthSnaps : snapshots;
+  const sortedSnaps = [...reportSnaps].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
+
+  const totalEvents   = reportSnaps.reduce((s, snap) => s + snap.totalEvents, 0);
+  const totalUsers    = reportSnaps.reduce((s, snap) => s + snap.totalUsers, 0);
+  const totalGenerated = reportSnaps.reduce(
+    (s, snap) => s + (snap.funnel.find((f) => f.eventName === "cupon_generado")?.events ?? 0), 0
+  );
+  const totalRedeemed = reportSnaps.reduce(
+    (s, snap) => s + (snap.funnel.find((f) => f.eventName === "cupones_canjeados")?.events ?? 0), 0
+  );
+
+  const funnelRows = STAGE_DEFS.map((def) => ({
+    label: def.label,
+    name: def.name,
+    events: reportSnaps.reduce(
+      (s, snap) => s + (snap.funnel.find((f) => f.eventName === def.name)?.events ?? 0), 0
+    ),
+  })).sort((a, b) => b.events - a.events);
+
+  const dateStr = today.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+  const periodStr = sortedSnaps.length > 0
+    ? `${sortedSnaps[0].periodLabel} – ${sortedSnaps[sortedSnaps.length - 1].periodLabel}`
+    : dateStr;
+
+  const campTotalCoupons    = campaigns.reduce((s, c) => s + c.couponCount, 0);
+  const campTotalGenerated  = campaigns.reduce((s, c) => s + (c.couponsGenerated ?? 0), 0);
+  const campTotalUsed       = campaigns.reduce((s, c) => s + c.couponsUsed, 0);
+  const campTotalAvail      = campTotalCoupons - campTotalUsed;
+  const campActiveCount     = campaigns.filter((c) => c.status === "Activo").length;
+
+  const cell: React.CSSProperties = { padding: "9px 10px", borderBottom: "1px solid #f3f4f6" };
+  const th: React.CSSProperties   = { padding: "9px 10px", fontWeight: 700, fontSize: 11, color: "#6b7280", textAlign: "left", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" };
+
+  return (
+    <div
+      id="pdf-report"
+      style={{ display: "none", fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: "#1a1a2e", padding: 0, background: "white" }}
+    >
+      {/* ── Header ── */}
+      <div style={{ borderBottom: "2px solid #7c3aed", paddingBottom: 16, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1a1a2e", margin: 0 }}>Análisis Funnel · Cuponera Pepsi</h1>
+            <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Monitoreo diario · Google Analytics</p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ fontSize: 11, color: "#6b7280", margin: 0 }}>Generado el</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#1a1a2e", margin: "2px 0 0" }}>{dateStr}</p>
+            <p style={{ fontSize: 12, color: "#7c3aed", margin: "2px 0 0" }}>
+              {reportSnaps.length} día{reportSnaps.length !== 1 ? "s" : ""} cargado{reportSnaps.length !== 1 ? "s" : ""}
+            </p>
+            <p style={{ fontSize: 11, color: "#9ca3af", margin: "2px 0 0" }}>{periodStr}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── KPI Cards ── */}
+      <h2 style={{ fontSize: 15, fontWeight: 700, color: "#1a1a2e", margin: "0 0 12px" }}>Indicadores del Período</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 28 }}>
+        {[
+          { label: "Eventos totales",    value: totalEvents.toLocaleString("es-ES"),   color: "#1a73e8" },
+          { label: "Usuarios únicos",    value: totalUsers.toLocaleString("es-ES"),    color: "#34a853" },
+          { label: "Cupones generados",  value: totalGenerated.toLocaleString("es-ES"), color: "#7c3aed" },
+          { label: "Cupones canjeados",  value: totalRedeemed.toLocaleString("es-ES"),  color: "#f4511e" },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: "14px 16px", background: "white" }}>
+            <p style={{ fontSize: 11, color: "#6b7280", margin: "0 0 4px" }}>{label}</p>
+            <p style={{ fontSize: 26, fontWeight: 800, color, margin: 0, fontVariantNumeric: "tabular-nums" }}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Funnel Table ── */}
+      <h2 style={{ fontSize: 15, fontWeight: 700, color: "#1a1a2e", margin: "0 0 10px" }}>Funnel Digital — Acumulado del Período</h2>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 32, fontSize: 13 }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: "left" }}>Etapa del Funnel</th>
+            <th style={{ ...th, textAlign: "right" }}>Total eventos</th>
+            <th style={{ ...th, textAlign: "right" }}>% del total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {funnelRows.map(({ label, events }, i) => (
+            <tr key={label} style={{ background: i % 2 === 0 ? "white" : "#fafafa" }}>
+              <td style={{ ...cell, color: "#374151" }}>{label}</td>
+              <td style={{ ...cell, textAlign: "right", fontWeight: 600, color: "#1a1a2e", fontVariantNumeric: "tabular-nums" }}>
+                {events.toLocaleString("es-ES")}
+              </td>
+              <td style={{ ...cell, textAlign: "right", color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>
+                {totalEvents > 0 ? ((events / totalEvents) * 100).toFixed(2) + "%" : "—"}
+              </td>
+            </tr>
+          ))}
+          <tr style={{ background: "#f0fdf4", borderTop: "2px solid #86efac" }}>
+            <td style={{ ...cell, fontWeight: 700, color: "#166534", borderBottom: "none" }}>Conversión final (cupones generados)</td>
+            <td style={{ ...cell, textAlign: "right", fontWeight: 700, color: "#166534", borderBottom: "none", fontVariantNumeric: "tabular-nums" }}>
+              {totalGenerated.toLocaleString("es-ES")}
+            </td>
+            <td style={{ ...cell, textAlign: "right", fontWeight: 700, color: "#166534", borderBottom: "none", fontVariantNumeric: "tabular-nums" }}>
+              {totalEvents > 0 && totalGenerated > 0 ? ((totalGenerated / totalEvents) * 100).toFixed(2) + "%" : "—"}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* ── Page break ── */}
+      <div style={{ pageBreakBefore: "always" }} />
+
+      {/* ── Campaigns Header ── */}
+      <div style={{ borderBottom: "2px solid #7c3aed", paddingBottom: 12, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1a1a2e", margin: "0 0 2px" }}>Campañas de Cupones</h2>
+        <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>Canjeados a la fecha · {dateStr}</p>
+      </div>
+
+      {/* ── Campaign KPI Cards ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+        {[
+          { label: "Total emitidos",    value: campTotalCoupons.toLocaleString("es-ES"),   sub: `en ${campaigns.length} campaña${campaigns.length !== 1 ? "s" : ""}` },
+          { label: "Cupones generados", value: campTotalGenerated.toLocaleString("es-ES"),  sub: campTotalCoupons > 0 ? ((campTotalGenerated / campTotalCoupons) * 100).toFixed(1) + "% del total" : "—" },
+          { label: "Cupones canjeados", value: campTotalUsed.toLocaleString("es-ES"),       sub: campTotalCoupons > 0 ? ((campTotalUsed / campTotalCoupons) * 100).toFixed(1) + "% del total" : "—" },
+          { label: "Campañas activas",  value: String(campActiveCount),                      sub: `${campTotalAvail.toLocaleString("es-ES")} cupones disponibles` },
+        ].map(({ label, value, sub }) => (
+          <div key={label} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", background: "white" }}>
+            <p style={{ fontSize: 11, color: "#6b7280", margin: "0 0 3px" }}>{label}</p>
+            <p style={{ fontSize: 22, fontWeight: 800, color: "#1a1a2e", margin: 0, fontVariantNumeric: "tabular-nums" }}>{value}</p>
+            <p style={{ fontSize: 10, color: "#9ca3af", margin: "3px 0 0" }}>{sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Campaigns Table ── */}
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: "left" }}>Nombre de campaña</th>
+            <th style={{ ...th, textAlign: "right" }}>Total</th>
+            <th style={{ ...th, textAlign: "right" }}>Generados</th>
+            <th style={{ ...th, textAlign: "right" }}>Canjeados</th>
+            <th style={{ ...th, textAlign: "right" }}>Disponibles</th>
+            <th style={{ ...th, textAlign: "right" }}>Puntos</th>
+            <th style={{ ...th, textAlign: "right" }}>Valor</th>
+            <th style={{ ...th, textAlign: "left" }}>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {campaigns.map((c, i) => {
+            const available = c.couponCount - c.couponsUsed;
+            const usedPct   = c.couponCount > 0 ? ((c.couponsUsed / c.couponCount) * 100).toFixed(0) : "0";
+            const totalPts  = c.couponCount * c.pointsPerCoupon;
+            const usedPts   = c.couponsUsed * c.pointsPerCoupon;
+            const sym       = c.currency ? getCurrencySymbol(c.currency) : null;
+            const totalVal  = c.valuePerCoupon != null ? c.couponCount * c.valuePerCoupon : null;
+            const usedVal   = c.valuePerCoupon != null ? c.couponsUsed * c.valuePerCoupon : null;
+            const sc        = STATUS_PRINT_COLOR[c.status] ?? { bg: "#f9fafb", text: "#6b7280" };
+            return (
+              <tr key={c.id} style={{ background: i % 2 === 0 ? "white" : "#fafafa" }}>
+                <td style={{ ...cell, textAlign: "left" }}>
+                  <p style={{ fontWeight: 600, color: "#111827", margin: 0, fontSize: 12 }}>{c.name}</p>
+                  <p style={{ fontSize: 10, color: "#9ca3af", margin: "2px 0 0" }}>{c.startDate} – {c.endDate}</p>
+                </td>
+                <td style={{ ...cell, textAlign: "right", fontWeight: 600, color: "#111827", fontVariantNumeric: "tabular-nums" }}>
+                  {c.couponCount.toLocaleString("es-ES")}
+                </td>
+                <td style={{ ...cell, textAlign: "right", color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>
+                  {c.couponsGenerated != null ? c.couponsGenerated.toLocaleString("es-ES") : "—"}
+                </td>
+                <td style={{ ...cell, textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                  <span style={{ fontWeight: 600, color: "#111827" }}>{c.couponsUsed.toLocaleString("es-ES")}</span>
+                  {c.couponsUsed > 0 && <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>({usedPct}%)</span>}
+                </td>
+                <td style={{ ...cell, textAlign: "right", color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>
+                  {available.toLocaleString("es-ES")}
+                </td>
+                <td style={{ ...cell, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                  {totalPts > 0
+                    ? <><span style={{ fontWeight: 600, color: "#111827" }}>{totalPts.toLocaleString("es-ES")}</span><span style={{ color: "#9ca3af" }}> / {usedPts.toLocaleString("es-ES")}</span></>
+                    : <span style={{ color: "#d1d5db" }}>—</span>}
+                </td>
+                <td style={{ ...cell, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                  {sym && totalVal != null
+                    ? <><span style={{ fontWeight: 600, color: "#111827" }}>{sym} {totalVal.toLocaleString("es-ES")}</span><span style={{ color: "#9ca3af" }}> / {usedVal!.toLocaleString("es-ES")}</span></>
+                    : <span style={{ color: "#d1d5db" }}>—</span>}
+                </td>
+                <td style={{ ...cell, textAlign: "left" }}>
+                  <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 9999, fontSize: 10, fontWeight: 600, color: sc.text, background: sc.bg }}>
+                    {c.status}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {/* ── Footer ── */}
+      <div style={{ marginTop: 32, paddingTop: 14, borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between" }}>
+        <p style={{ fontSize: 10, color: "#9ca3af", margin: 0 }}>Cuponera Pepsi · Análisis Funnel</p>
+        <p style={{ fontSize: 10, color: "#9ca3af", margin: 0 }}>Generado el {dateStr}</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
 function EmptyState({ onUpload }: { onUpload: () => void }) {
@@ -2367,17 +2589,30 @@ export default function AnalisisFunnelPage() {
             )}
           </p>
         </div>
-        {isAuthenticated && (
-          <button
-            onClick={() => setUploadOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
-            Cargar día
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {snapshots.length > 0 && (
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Exportar PDF
+            </button>
+          )}
+          {isAuthenticated && (
+            <button
+              onClick={() => setUploadOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Cargar día
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -2451,6 +2686,8 @@ export default function AnalisisFunnelPage() {
           latestDate={latestDate}
         />
       )}
+
+      <PrintReport snapshots={snapshots} />
     </div>
   );
 }

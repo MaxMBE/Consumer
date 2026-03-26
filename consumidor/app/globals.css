@@ -17,3 +17,23 @@ body {
 * {
   box-sizing: border-box;
 }
+
+@media print {
+  body * { visibility: hidden; }
+  #pdf-report, #pdf-report * { visibility: visible; }
+  #pdf-report {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: white;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+}
