@@ -1377,7 +1377,6 @@ function EventsTableGA4({
             </th>
             <th className="text-right px-6 py-3 font-semibold text-gray-600 text-xs">Total de usuarios</th>
             <th className="text-right px-6 py-3 font-semibold text-gray-600 text-xs">Número de eventos por usuario activo</th>
-            <th className="text-right px-6 py-3 font-semibold text-gray-600 text-xs">Total de ingresos</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -1404,7 +1403,6 @@ function EventsTableGA4({
               <br />
               <span className="text-xs text-gray-400 font-normal">Media 0 %</span>
             </td>
-            <td className="px-6 py-3 text-right font-bold text-gray-900">0,00 $</td>
           </tr>
           {rows.map((row) => (
             <tr key={row.name} className="hover:bg-gray-50/50">
@@ -1437,7 +1435,6 @@ function EventsTableGA4({
               </td>
               <td className="px-6 py-3 text-right text-gray-400 text-xs">—</td>
               <td className="px-6 py-3 text-right text-gray-400 text-xs">—</td>
-              <td className="px-6 py-3 text-right text-gray-400 text-xs">0,00 $ (—)</td>
             </tr>
           ))}
         </tbody>
