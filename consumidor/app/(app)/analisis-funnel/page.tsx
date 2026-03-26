@@ -2291,9 +2291,6 @@ function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[], curren
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">
         ${totalPts > 0 ? `<span style="font-weight:600;color:#111827">${n(totalPts)}</span><span style="color:#9ca3af"> / ${n(usedPts)}</span>` : '<span style="color:#d1d5db">—</span>'}
       </td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">
-        ${sym && totalVal != null ? `<span style="font-weight:600;color:#111827">${sym} ${n(totalVal)}</span><span style="color:#9ca3af"> / ${n(usedVal!)}</span>` : '<span style="color:#d1d5db">—</span>'}
-      </td>
       <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6">
         <span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;${ss}">${c.status}</span>
       </td>
@@ -2447,6 +2444,7 @@ function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[], curren
     ${daySection}
 
     <!-- Campaigns -->
+    <div class="pb"></div>
     <div style="border-bottom:2px solid #7c3aed;padding-bottom:12px;margin-bottom:20px">
       <div style="font-size:18px;font-weight:800">Campañas de Cupones</div>
       <div style="font-size:12px;color:#6b7280;margin-top:2px">Canjeados a la fecha · ${dateStr}</div>
@@ -2465,7 +2463,6 @@ function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[], curren
         <th style="text-align:right">Canjeados</th>
         <th style="text-align:right">Disponibles</th>
         <th style="text-align:right">Puntos</th>
-        <th style="text-align:right">Valor</th>
         <th>Estado</th>
       </tr></thead>
       <tbody>${campaignHTML}</tbody>
