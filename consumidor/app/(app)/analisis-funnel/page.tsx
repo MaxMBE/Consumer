@@ -2280,7 +2280,7 @@ function PrintReport({ snapshots }: { snapshots: DaySnapshot[] }) {
   return (
     <div
       id="pdf-report"
-      style={{ display: "none", fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: "#1a1a2e", padding: 0, background: "white" }}
+      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: "#1a1a2e", padding: 0, background: "white" }}
     >
       {/* ── Header ── */}
       <div style={{ borderBottom: "2px solid #7c3aed", paddingBottom: 16, marginBottom: 24 }}>
