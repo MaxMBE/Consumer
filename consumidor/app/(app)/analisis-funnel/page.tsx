@@ -154,6 +154,339 @@ function parseGA4SingleDay(raw: string): Partial<DaySnapshot> {
   };
 }
 
+// ─── GA4 Monthly CSV Parser ───────────────────────────────────────────────────
+//
+// Soporta el CSV que exporta GA4 en "Eventos" con "Fecha" como dimensión
+// secundaria. Formato esperado:
+//   Nombre del evento,Fecha,Recuento de eventos
+//   page_view,20260301,1500
+//   ...
+// También soporta formato manual:
+//   date,total_events,total_users,events_per_user,page_view,scroll,...
+//
+function parseGA4MonthCSV(text: string): Partial<DaySnapshot>[] {
+  const clean = text.replace(/^\uFEFF/, "");
+  const lines = clean.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+  if (lines.length < 2) return [];
+
+  const parseCols = (line: string) =>
+    line.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
+
+  const header = parseCols(lines[0]).map((h) => h.toLowerCase());
+
+  const months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  const isoFromRaw = (raw: string) => {
+    if (/^\d{8}$/.test(raw)) return `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}`;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    return null;
+  };
+  const labelFromIso = (iso: string) => {
+    const d = new Date(iso + "T12:00:00");
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  };
+
+  // ── Format A: GA4 events-by-date export ──
+  const eiName = header.findIndex((h) => h.includes("event") || h.includes("evento"));
+  const eiDate = header.findIndex((h) => h === "fecha" || h === "date");
+  const eiCount = header.findIndex((h) => h.includes("recuento") || h.includes("count") || h.includes("events"));
+
+  if (eiName !== -1 && eiDate !== -1 && eiCount !== -1) {
+    const byDate: Record<string, Record<string, number>> = {};
+    for (const line of lines.slice(1)) {
+      const cols = parseCols(line);
+      const rawEvent = cols[eiName]?.toLowerCase() ?? "";
+      const rawDate  = cols[eiDate] ?? "";
+      const count    = parseInt(cols[eiCount]?.replace(/\D/g, "") ?? "0") || 0;
+      const iso = isoFromRaw(rawDate);
+      if (!iso || !rawEvent || rawEvent === "(not set)") continue;
+      if (!byDate[iso]) byDate[iso] = {};
+      byDate[iso][rawEvent] = (byDate[iso][rawEvent] ?? 0) + count;
+    }
+
+    return Object.entries(byDate)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([iso, events]) => {
+        const totalEvents = Object.values(events).reduce((s, v) => s + v, 0);
+        const totalUsers  = events["session_start"] ?? events["first_visit"] ?? 0;
+        const eventsPerUser = totalUsers > 0 ? Math.round((totalEvents / totalUsers) * 100) / 100 : 0;
+        const funnel = STAGE_DEFS
+          .filter((d) => events[d.name] != null)
+          .map((d) => ({ eventName: d.name, label: d.label, events: events[d.name] }));
+        return { periodDate: iso, periodLabel: labelFromIso(iso), source: "Google Analytics – Cuponera Pepsi", totalEvents, totalUsers, eventsPerUser, funnel };
+      });
+  }
+
+  // ── Format B: manual CSV with event columns in header ──
+  // date,total_events,total_users,events_per_user,page_view,scroll,...
+  const dateIdx = header.findIndex((h) => h === "date" || h === "fecha");
+  if (dateIdx !== -1) {
+    const eventCols = STAGE_DEFS.map((d) => ({
+      def: d,
+      idx: header.findIndex((h) => h === d.name),
+    })).filter((c) => c.idx !== -1);
+
+    const getNum = (cols: string[], key: string) =>
+      parseFloat(cols[header.indexOf(key)]?.replace(",", ".") ?? "0") || 0;
+
+    return lines.slice(1).map((line) => {
+      const cols = parseCols(line);
+      const iso  = isoFromRaw(cols[dateIdx]);
+      if (!iso) return null;
+      const totalEvents   = getNum(cols, "total_events");
+      const totalUsers    = getNum(cols, "total_users");
+      const eventsPerUser = getNum(cols, "events_per_user");
+      const funnel = eventCols
+        .map(({ def, idx }) => ({ eventName: def.name, label: def.label, events: parseInt(cols[idx]) || 0 }))
+        .filter((s) => s.events > 0);
+      const te = totalEvents || funnel.reduce((s, f) => s + f.events, 0);
+      const tu = totalUsers  || funnel.find((f) => f.eventName === "session_start")?.events ?? 0;
+      return { periodDate: iso, periodLabel: labelFromIso(iso), source: "Google Analytics – Cuponera Pepsi", totalEvents: te, totalUsers: tu, eventsPerUser, funnel };
+    }).filter((s): s is Partial<DaySnapshot> => s !== null);
+  }
+
+  return [];
+}
+
+// ─── Monthly Upload Modal ─────────────────────────────────────────────────────
+
+function MonthUploadModal({
+  onClose,
+  onBulkSave,
+  snapshots,
+}: {
+  onClose: () => void;
+  onBulkSave: (toInsert: DaySnapshot[], toUpdate: { id: string; snap: DaySnapshot }[]) => Promise<void>;
+  snapshots: DaySnapshot[];
+}) {
+  const [step, setStep]       = useState<"upload" | "preview">("upload");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving]   = useState(false);
+  const [parsed, setParsed]   = useState<Partial<DaySnapshot>[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File) => {
+    setLoading(true);
+    try {
+      const text = await file.text();
+      const result = parseGA4MonthCSV(text);
+      setParsed(result);
+      setStep("preview");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const toInsert: DaySnapshot[] = [];
+    const toUpdate: { id: string; snap: DaySnapshot }[] = [];
+
+    for (const p of parsed) {
+      if (!p.periodDate) continue;
+      const existing = snapshots.find((s) => s.periodDate === p.periodDate);
+      const snap: DaySnapshot = {
+        id: existing?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        savedAt: new Date().toISOString(),
+        source: p.source ?? "Google Analytics – Cuponera Pepsi",
+        periodLabel: p.periodLabel ?? p.periodDate,
+        periodDate: p.periodDate,
+        totalEvents: p.totalEvents ?? 0,
+        totalUsers: p.totalUsers ?? 0,
+        eventsPerUser: p.eventsPerUser ?? 0,
+        funnel: [...(p.funnel ?? [])],
+      };
+      // Preserve manually entered cupones_canjeados
+      if (existing) {
+        const manualVal = existing.funnel.find((f) => f.eventName === "cupones_canjeados")?.events ?? 0;
+        const def = STAGE_DEFS.find((d) => d.name === "cupones_canjeados")!;
+        const idx = snap.funnel.findIndex((f) => f.eventName === "cupones_canjeados");
+        if (manualVal > 0) {
+          if (idx !== -1) snap.funnel[idx].events = manualVal;
+          else snap.funnel.push({ eventName: "cupones_canjeados", label: def.label, events: manualVal });
+        }
+        toUpdate.push({ id: existing.id, snap });
+      } else {
+        toInsert.push(snap);
+      }
+    }
+
+    await onBulkSave(toInsert, toUpdate);
+    setSaving(false);
+    onClose();
+  };
+
+  const newCount      = parsed.filter((p) => !snapshots.find((s) => s.periodDate === p.periodDate)).length;
+  const updateCount   = parsed.length - newCount;
+
+  const downloadTemplate = () => {
+    const header = ["date","total_events","total_users","events_per_user",...STAGE_DEFS.map((d) => d.name)].join(",");
+    const example = ["2026-03-01","1500","450","3.33",...STAGE_DEFS.map(() => "0")].join(",");
+    const csv = header + "\n" + example;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "plantilla-mes.csv";
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">
+            {step === "upload" ? "Cargar mes completo" : `Vista previa · ${parsed.length} día${parsed.length !== 1 ? "s" : ""} detectado${parsed.length !== 1 ? "s" : ""}`}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+          {step === "upload" && (
+            <div className="space-y-4">
+              <div
+                className="border-2 border-dashed border-gray-300 rounded-xl p-10 flex flex-col items-center gap-4 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors"
+                onClick={() => fileRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+              >
+                {loading ? (
+                  <>
+                    <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm text-gray-600">Procesando CSV...</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center">
+                      <svg className="w-7 h-7 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium text-gray-900">Arrastrá el CSV de Google Analytics</p>
+                      <p className="text-sm text-gray-500 mt-1">Reporte de "Eventos" con "Fecha" como dimensión secundaria</p>
+                    </div>
+                    <button className="mt-1 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700">
+                      Seleccionar archivo
+                    </button>
+                  </>
+                )}
+                <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+              </div>
+              <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 space-y-1">
+                <p className="font-medium text-gray-700">Cómo exportar desde GA4:</p>
+                <p>1. Reportes → Engagement → Eventos</p>
+                <p>2. Agregar dimensión secundaria: <strong>Fecha</strong></p>
+                <p>3. Seleccionar el mes completo como rango de fechas</p>
+                <p>4. Exportar → Descargar CSV</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={downloadTemplate} className="text-xs text-purple-600 hover:underline flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Descargar plantilla CSV manual
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "preview" && (
+            <div className="space-y-4">
+              {parsed.length === 0 ? (
+                <div className="text-center py-10 text-gray-500 text-sm">
+                  No se detectaron datos válidos en el archivo. Verificá el formato del CSV.
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-3">
+                    {newCount > 0 && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                        {newCount} días nuevos
+                      </span>
+                    )}
+                    {updateCount > 0 && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                        {updateCount} días a actualizar
+                      </span>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-semibold text-gray-500">Fecha</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-500">Eventos</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-500">Usuarios</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-500">Cupones gen.</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-500">Page views</th>
+                          <th className="text-center px-3 py-2 font-semibold text-gray-500">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {parsed.map((p) => {
+                          const isNew = !snapshots.find((s) => s.periodDate === p.periodDate);
+                          const cupones = p.funnel?.find((f) => f.eventName === "cupon_generado")?.events ?? 0;
+                          const pv      = p.funnel?.find((f) => f.eventName === "page_view")?.events ?? 0;
+                          return (
+                            <tr key={p.periodDate} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 font-medium text-gray-800">{p.periodLabel ?? p.periodDate}</td>
+                              <td className="px-3 py-2 text-right tabular-nums">{(p.totalEvents ?? 0).toLocaleString("es-ES")}</td>
+                              <td className="px-3 py-2 text-right tabular-nums text-gray-500">{(p.totalUsers ?? 0).toLocaleString("es-ES")}</td>
+                              <td className="px-3 py-2 text-right tabular-nums text-purple-600 font-semibold">{cupones.toLocaleString("es-ES")}</td>
+                              <td className="px-3 py-2 text-right tabular-nums text-gray-500">{pv.toLocaleString("es-ES")}</td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isNew ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                                  {isNew ? "Nuevo" : "Actualizar"}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 flex justify-between items-center">
+          {step === "preview" ? (
+            <>
+              <button onClick={() => setStep("upload")} className="text-sm text-gray-500 hover:text-gray-700">
+                ← Cargar otro archivo
+              </button>
+              <div className="flex gap-3">
+                <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || parsed.length === 0}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg ${parsed.length > 0 && !saving ? "bg-purple-600 text-white hover:bg-purple-700" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                >
+                  {saving ? "Guardando..." : `Guardar ${parsed.length} día${parsed.length !== 1 ? "s" : ""}`}
+                </button>
+              </div>
+            </>
+          ) : (
+            <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">Cancelar</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Auto-insights ────────────────────────────────────────────────────────────
 
 interface Insight {
@@ -2517,6 +2850,7 @@ export default function AnalisisFunnelPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [comparisonId, setComparisonId] = useState<string | "none" | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [monthUploadOpen, setMonthUploadOpen] = useState(false);
 
   useEffect(() => {
     supabase
@@ -2573,6 +2907,25 @@ export default function AnalisisFunnelPage() {
     await supabase.from("funnel_snapshots").delete().eq("id", id);
     setSnapshots((prev) => prev.filter((s) => s.id !== id));
     if (selectedId === id) setSelectedId(null);
+  };
+
+  const bulkSaveSnapshots = async (
+    toInsert: DaySnapshot[],
+    toUpdate: { id: string; snap: DaySnapshot }[]
+  ) => {
+    const toRow = (s: DaySnapshot) => ({
+      id: s.id, saved_at: s.savedAt, period_label: s.periodLabel, period_date: s.periodDate,
+      source: s.source, total_events: s.totalEvents, total_users: s.totalUsers,
+      events_per_user: s.eventsPerUser, funnel: s.funnel,
+    });
+    if (toInsert.length > 0) {
+      await supabase.from("funnel_snapshots").insert(toInsert.map(toRow));
+      setSnapshots((prev) => [...prev, ...toInsert]);
+    }
+    for (const { id, snap } of toUpdate) {
+      await supabase.from("funnel_snapshots").update(toRow(snap)).eq("id", id);
+      setSnapshots((prev) => prev.map((s) => (s.id === id ? snap : s)));
+    }
   };
 
   const updateSnapshotEvent = async (snapshotId: string, eventName: string, value: number) => {
@@ -2660,15 +3013,26 @@ export default function AnalisisFunnelPage() {
             </>
           )}
           {isAuthenticated && (
-            <button
-              onClick={() => setUploadOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-              </svg>
-              Cargar día
-            </button>
+            <>
+              <button
+                onClick={() => setMonthUploadOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Cargar mes
+              </button>
+              <button
+                onClick={() => setUploadOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Cargar día
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -2723,6 +3087,17 @@ export default function AnalisisFunnelPage() {
           onSelect={(s) => { setSelectedId(s.id); setView("rendimiento"); }}
           onDelete={deleteSnapshot}
           selectedId={selectedId}
+        />
+      )}
+
+      {monthUploadOpen && (
+        <MonthUploadModal
+          onClose={() => setMonthUploadOpen(false)}
+          onBulkSave={async (toInsert, toUpdate) => {
+            await bulkSaveSnapshots(toInsert, toUpdate);
+            setView("dashboard");
+          }}
+          snapshots={snapshots}
         />
       )}
 
