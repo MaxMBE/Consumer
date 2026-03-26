@@ -1762,7 +1762,6 @@ function CuponesView() {
               <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-28">Canjeados</th>
               <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-24">Disponibles</th>
               <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-32">Puntos</th>
-              <th className="text-right px-4 py-3 font-semibold text-gray-500 text-xs w-36">Valor</th>
               <th className="text-left px-4 py-3 font-semibold text-gray-500 text-xs w-28">Estado</th>
               <th className="px-4 py-3 w-16" />
             </tr>
@@ -1798,11 +1797,6 @@ function CuponesView() {
                   <td className="px-4 py-4 text-right tabular-nums text-xs whitespace-nowrap">
                     {totalPts > 0 ? (
                       <><span className="font-semibold text-gray-800">{totalPts.toLocaleString("es-ES")}</span><span className="text-gray-400"> / {usedPts.toLocaleString("es-ES")}</span></>
-                    ) : <span className="text-gray-200">—</span>}
-                  </td>
-                  <td className="px-4 py-4 text-right tabular-nums text-xs whitespace-nowrap">
-                    {sym && totalVal != null ? (
-                      <><span className="font-semibold text-gray-800">{sym} {totalVal.toLocaleString("es-ES")}</span><span className="text-gray-400"> / {usedVal!.toLocaleString("es-ES")}</span></>
                     ) : <span className="text-gray-200">—</span>}
                   </td>
                   <td className="px-5 py-4">
