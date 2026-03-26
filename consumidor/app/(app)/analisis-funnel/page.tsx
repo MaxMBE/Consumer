@@ -2340,6 +2340,7 @@ function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[]): strin
 <body>
   <div class="toolbar">
     <button class="btn-c" onclick="window.close()">Cerrar</button>
+    <button class="btn-c" onclick="(function(){var b=new Blob([document.documentElement.outerHTML],{type:'text/html'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='reporte-funnel-pepsi.html';a.click()})()">&#8595; Descargar HTML</button>
     <button class="btn-p" onclick="window.print()">&#8595; Guardar como PDF</button>
   </div>
   <div class="page">
