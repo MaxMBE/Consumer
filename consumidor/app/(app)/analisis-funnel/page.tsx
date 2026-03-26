@@ -2228,225 +2228,200 @@ function CuponesView() {
 
 // ─── PDF Report ───────────────────────────────────────────────────────────────
 
-const STATUS_PRINT_COLOR: Record<string, { bg: string; text: string }> = {
-  Activo:         { bg: "#f0fdf4", text: "#16a34a" },
-  "Por comenzar": { bg: "#eff6ff", text: "#2563eb" },
-  Borrador:       { bg: "#fffbeb", text: "#d97706" },
-  Cancelado:      { bg: "#fef2f2", text: "#dc2626" },
-  Finalizado:     { bg: "#f9fafb", text: "#6b7280" },
-  Inactivo:       { bg: "#f9fafb", text: "#9ca3af" },
-};
-
-function PrintReport({ snapshots }: { snapshots: DaySnapshot[] }) {
-  const { campaigns } = useCampaigns();
-
+function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[]): string {
   const today = new Date();
   const currentMonth = today.toISOString().slice(0, 7);
   const monthSnaps = snapshots.filter((s) => s.periodDate.startsWith(currentMonth));
   const reportSnaps = monthSnaps.length > 0 ? monthSnaps : snapshots;
   const sortedSnaps = [...reportSnaps].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
 
-  const totalEvents   = reportSnaps.reduce((s, snap) => s + snap.totalEvents, 0);
-  const totalUsers    = reportSnaps.reduce((s, snap) => s + snap.totalUsers, 0);
-  const totalGenerated = reportSnaps.reduce(
-    (s, snap) => s + (snap.funnel.find((f) => f.eventName === "cupon_generado")?.events ?? 0), 0
-  );
-  const totalRedeemed = reportSnaps.reduce(
-    (s, snap) => s + (snap.funnel.find((f) => f.eventName === "cupones_canjeados")?.events ?? 0), 0
-  );
+  const totalEvents    = reportSnaps.reduce((s, snap) => s + snap.totalEvents, 0);
+  const totalUsers     = reportSnaps.reduce((s, snap) => s + snap.totalUsers, 0);
+  const totalGenerated = reportSnaps.reduce((s, snap) => s + (snap.funnel.find((f) => f.eventName === "cupon_generado")?.events ?? 0), 0);
+  const totalRedeemed  = reportSnaps.reduce((s, snap) => s + (snap.funnel.find((f) => f.eventName === "cupones_canjeados")?.events ?? 0), 0);
 
   const funnelRows = STAGE_DEFS.map((def) => ({
     label: def.label,
-    name: def.name,
-    events: reportSnaps.reduce(
-      (s, snap) => s + (snap.funnel.find((f) => f.eventName === def.name)?.events ?? 0), 0
-    ),
+    events: reportSnaps.reduce((s, snap) => s + (snap.funnel.find((f) => f.eventName === def.name)?.events ?? 0), 0),
   })).sort((a, b) => b.events - a.events);
 
-  const dateStr = today.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+  const dateStr   = today.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
   const periodStr = sortedSnaps.length > 0
     ? `${sortedSnaps[0].periodLabel} – ${sortedSnaps[sortedSnaps.length - 1].periodLabel}`
     : dateStr;
 
-  const campTotalCoupons    = campaigns.reduce((s, c) => s + c.couponCount, 0);
-  const campTotalGenerated  = campaigns.reduce((s, c) => s + (c.couponsGenerated ?? 0), 0);
-  const campTotalUsed       = campaigns.reduce((s, c) => s + c.couponsUsed, 0);
-  const campTotalAvail      = campTotalCoupons - campTotalUsed;
-  const campActiveCount     = campaigns.filter((c) => c.status === "Activo").length;
+  const campTotalCoupons   = campaigns.reduce((s, c) => s + c.couponCount, 0);
+  const campTotalGenerated = campaigns.reduce((s, c) => s + (c.couponsGenerated ?? 0), 0);
+  const campTotalUsed      = campaigns.reduce((s, c) => s + c.couponsUsed, 0);
+  const campTotalAvail     = campTotalCoupons - campTotalUsed;
+  const campActiveCount    = campaigns.filter((c) => c.status === "Activo").length;
 
-  const cell: React.CSSProperties = { padding: "9px 10px", borderBottom: "1px solid #f3f4f6" };
-  const th: React.CSSProperties   = { padding: "9px 10px", fontWeight: 700, fontSize: 11, color: "#6b7280", textAlign: "left", background: "#f9fafb", borderBottom: "1px solid #e5e7eb" };
+  const n   = (v: number) => v.toLocaleString("es-ES");
+  const pct = (a: number, b: number) => b > 0 ? ((a / b) * 100).toFixed(1) + "%" : "—";
 
-  return (
-    <div
-      id="pdf-report"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: "#1a1a2e", padding: 0, background: "white" }}
-    >
-      {/* ── Header ── */}
-      <div style={{ borderBottom: "2px solid #7c3aed", paddingBottom: 16, marginBottom: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#1a1a2e", margin: 0 }}>Análisis Funnel · Cuponera Pepsi</h1>
-            <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Monitoreo diario · Google Analytics</p>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <p style={{ fontSize: 11, color: "#6b7280", margin: 0 }}>Generado el</p>
-            <p style={{ fontSize: 13, fontWeight: 600, color: "#1a1a2e", margin: "2px 0 0" }}>{dateStr}</p>
-            <p style={{ fontSize: 12, color: "#7c3aed", margin: "2px 0 0" }}>
-              {reportSnaps.length} día{reportSnaps.length !== 1 ? "s" : ""} cargado{reportSnaps.length !== 1 ? "s" : ""}
-            </p>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "2px 0 0" }}>{periodStr}</p>
-          </div>
-        </div>
+  const statusStyle: Record<string, string> = {
+    Activo:         "background:#dcfce7;color:#16a34a",
+    "Por comenzar": "background:#dbeafe;color:#2563eb",
+    Borrador:       "background:#fef3c7;color:#d97706",
+    Cancelado:      "background:#fee2e2;color:#dc2626",
+    Finalizado:     "background:#f3f4f6;color:#6b7280",
+    Inactivo:       "background:#f3f4f6;color:#9ca3af",
+  };
+
+  const funnelHTML = funnelRows.map(({ label, events }, i) => `
+    <tr style="background:${i % 2 === 0 ? "#fff" : "#fafafa"}">
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;color:#374151">${label}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#1a1a2e">${n(events)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">${totalEvents > 0 ? ((events / totalEvents) * 100).toFixed(2) + "%" : "—"}</td>
+    </tr>`).join("");
+
+  const campaignHTML = campaigns.map((c, i) => {
+    const available = c.couponCount - c.couponsUsed;
+    const usedPct   = c.couponCount > 0 ? ((c.couponsUsed / c.couponCount) * 100).toFixed(0) : "0";
+    const totalPts  = c.couponCount * c.pointsPerCoupon;
+    const usedPts   = c.couponsUsed * c.pointsPerCoupon;
+    const sym       = c.currency ? getCurrencySymbol(c.currency) : null;
+    const totalVal  = c.valuePerCoupon != null ? c.couponCount * c.valuePerCoupon : null;
+    const usedVal   = c.valuePerCoupon != null ? c.couponsUsed * c.valuePerCoupon : null;
+    const ss        = statusStyle[c.status] ?? "background:#f3f4f6;color:#6b7280";
+    const bg        = i % 2 === 0 ? "#fff" : "#fafafa";
+    return `
+    <tr style="background:${bg}">
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6">
+        <div style="font-weight:600;color:#111827;font-size:12px">${c.name}</div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:2px">${c.startDate} – ${c.endDate}</div>
+      </td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#111827">${n(c.couponCount)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">${c.couponsGenerated != null ? n(c.couponsGenerated) : "—"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">
+        <span style="font-weight:600;color:#111827">${n(c.couponsUsed)}</span>${c.couponsUsed > 0 ? `<span style="font-size:10px;color:#9ca3af;margin-left:3px">(${usedPct}%)</span>` : ""}
+      </td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">${n(available)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">
+        ${totalPts > 0 ? `<span style="font-weight:600;color:#111827">${n(totalPts)}</span><span style="color:#9ca3af"> / ${n(usedPts)}</span>` : '<span style="color:#d1d5db">—</span>'}
+      </td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">
+        ${sym && totalVal != null ? `<span style="font-weight:600;color:#111827">${sym} ${n(totalVal)}</span><span style="color:#9ca3af"> / ${n(usedVal!)}</span>` : '<span style="color:#d1d5db">—</span>'}
+      </td>
+      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6">
+        <span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;${ss}">${c.status}</span>
+      </td>
+    </tr>`;
+  }).join("");
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Reporte Funnel · Cuponera Pepsi · ${dateStr}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a1a2e;background:#fff;font-size:13px;line-height:1.5}
+    .page{padding:40px 48px;max-width:860px;margin:0 auto}
+    h2{font-size:15px;font-weight:700}
+    table{width:100%;border-collapse:collapse}
+    th{font-size:11px;font-weight:700;color:#6b7280;background:#f9fafb;padding:9px 10px;border-bottom:1px solid #e5e7eb}
+    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .card{border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fff}
+    .clabel{font-size:11px;color:#6b7280;margin-bottom:4px}
+    .cval{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+    .csub{font-size:10px;color:#9ca3af;margin-top:3px}
+    .toolbar{position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:100}
+    .btn-p{background:#7c3aed;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+    .btn-c{background:#fff;color:#6b7280;border:1px solid #e5e7eb;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+    @media print{
+      *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+      @page{margin:1.2cm;size:A4 portrait}
+      .toolbar{display:none!important}
+      .pb{page-break-before:always}
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button class="btn-c" onclick="window.close()">Cerrar</button>
+    <button class="btn-p" onclick="window.print()">&#8595; Guardar como PDF</button>
+  </div>
+  <div class="page">
+    <!-- Header -->
+    <div style="border-bottom:2px solid #7c3aed;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <div style="font-size:22px;font-weight:800;color:#1a1a2e">Análisis Funnel · Cuponera Pepsi</div>
+        <div style="font-size:13px;color:#6b7280;margin-top:4px">Monitoreo diario · Google Analytics</div>
       </div>
-
-      {/* ── KPI Cards ── */}
-      <h2 style={{ fontSize: 15, fontWeight: 700, color: "#1a1a2e", margin: "0 0 12px" }}>Indicadores del Período</h2>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 28 }}>
-        {[
-          { label: "Eventos totales",    value: totalEvents.toLocaleString("es-ES"),   color: "#1a73e8" },
-          { label: "Usuarios únicos",    value: totalUsers.toLocaleString("es-ES"),    color: "#34a853" },
-          { label: "Cupones generados",  value: totalGenerated.toLocaleString("es-ES"), color: "#7c3aed" },
-          { label: "Cupones canjeados",  value: totalRedeemed.toLocaleString("es-ES"),  color: "#f4511e" },
-        ].map(({ label, value, color }) => (
-          <div key={label} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: "14px 16px", background: "white" }}>
-            <p style={{ fontSize: 11, color: "#6b7280", margin: "0 0 4px" }}>{label}</p>
-            <p style={{ fontSize: 26, fontWeight: 800, color, margin: 0, fontVariantNumeric: "tabular-nums" }}>{value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Funnel Table ── */}
-      <h2 style={{ fontSize: 15, fontWeight: 700, color: "#1a1a2e", margin: "0 0 10px" }}>Funnel Digital — Acumulado del Período</h2>
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 32, fontSize: 13 }}>
-        <thead>
-          <tr>
-            <th style={{ ...th, textAlign: "left" }}>Etapa del Funnel</th>
-            <th style={{ ...th, textAlign: "right" }}>Total eventos</th>
-            <th style={{ ...th, textAlign: "right" }}>% del total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {funnelRows.map(({ label, events }, i) => (
-            <tr key={label} style={{ background: i % 2 === 0 ? "white" : "#fafafa" }}>
-              <td style={{ ...cell, color: "#374151" }}>{label}</td>
-              <td style={{ ...cell, textAlign: "right", fontWeight: 600, color: "#1a1a2e", fontVariantNumeric: "tabular-nums" }}>
-                {events.toLocaleString("es-ES")}
-              </td>
-              <td style={{ ...cell, textAlign: "right", color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>
-                {totalEvents > 0 ? ((events / totalEvents) * 100).toFixed(2) + "%" : "—"}
-              </td>
-            </tr>
-          ))}
-          <tr style={{ background: "#f0fdf4", borderTop: "2px solid #86efac" }}>
-            <td style={{ ...cell, fontWeight: 700, color: "#166534", borderBottom: "none" }}>Conversión final (cupones generados)</td>
-            <td style={{ ...cell, textAlign: "right", fontWeight: 700, color: "#166534", borderBottom: "none", fontVariantNumeric: "tabular-nums" }}>
-              {totalGenerated.toLocaleString("es-ES")}
-            </td>
-            <td style={{ ...cell, textAlign: "right", fontWeight: 700, color: "#166534", borderBottom: "none", fontVariantNumeric: "tabular-nums" }}>
-              {totalEvents > 0 && totalGenerated > 0 ? ((totalGenerated / totalEvents) * 100).toFixed(2) + "%" : "—"}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      {/* ── Page break ── */}
-      <div style={{ pageBreakBefore: "always" }} />
-
-      {/* ── Campaigns Header ── */}
-      <div style={{ borderBottom: "2px solid #7c3aed", paddingBottom: 12, marginBottom: 20 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 800, color: "#1a1a2e", margin: "0 0 2px" }}>Campañas de Cupones</h2>
-        <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>Canjeados a la fecha · {dateStr}</p>
-      </div>
-
-      {/* ── Campaign KPI Cards ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
-        {[
-          { label: "Total emitidos",    value: campTotalCoupons.toLocaleString("es-ES"),   sub: `en ${campaigns.length} campaña${campaigns.length !== 1 ? "s" : ""}` },
-          { label: "Cupones generados", value: campTotalGenerated.toLocaleString("es-ES"),  sub: campTotalCoupons > 0 ? ((campTotalGenerated / campTotalCoupons) * 100).toFixed(1) + "% del total" : "—" },
-          { label: "Cupones canjeados", value: campTotalUsed.toLocaleString("es-ES"),       sub: campTotalCoupons > 0 ? ((campTotalUsed / campTotalCoupons) * 100).toFixed(1) + "% del total" : "—" },
-          { label: "Campañas activas",  value: String(campActiveCount),                      sub: `${campTotalAvail.toLocaleString("es-ES")} cupones disponibles` },
-        ].map(({ label, value, sub }) => (
-          <div key={label} style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", background: "white" }}>
-            <p style={{ fontSize: 11, color: "#6b7280", margin: "0 0 3px" }}>{label}</p>
-            <p style={{ fontSize: 22, fontWeight: 800, color: "#1a1a2e", margin: 0, fontVariantNumeric: "tabular-nums" }}>{value}</p>
-            <p style={{ fontSize: 10, color: "#9ca3af", margin: "3px 0 0" }}>{sub}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Campaigns Table ── */}
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-        <thead>
-          <tr>
-            <th style={{ ...th, textAlign: "left" }}>Nombre de campaña</th>
-            <th style={{ ...th, textAlign: "right" }}>Total</th>
-            <th style={{ ...th, textAlign: "right" }}>Generados</th>
-            <th style={{ ...th, textAlign: "right" }}>Canjeados</th>
-            <th style={{ ...th, textAlign: "right" }}>Disponibles</th>
-            <th style={{ ...th, textAlign: "right" }}>Puntos</th>
-            <th style={{ ...th, textAlign: "right" }}>Valor</th>
-            <th style={{ ...th, textAlign: "left" }}>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          {campaigns.map((c, i) => {
-            const available = c.couponCount - c.couponsUsed;
-            const usedPct   = c.couponCount > 0 ? ((c.couponsUsed / c.couponCount) * 100).toFixed(0) : "0";
-            const totalPts  = c.couponCount * c.pointsPerCoupon;
-            const usedPts   = c.couponsUsed * c.pointsPerCoupon;
-            const sym       = c.currency ? getCurrencySymbol(c.currency) : null;
-            const totalVal  = c.valuePerCoupon != null ? c.couponCount * c.valuePerCoupon : null;
-            const usedVal   = c.valuePerCoupon != null ? c.couponsUsed * c.valuePerCoupon : null;
-            const sc        = STATUS_PRINT_COLOR[c.status] ?? { bg: "#f9fafb", text: "#6b7280" };
-            return (
-              <tr key={c.id} style={{ background: i % 2 === 0 ? "white" : "#fafafa" }}>
-                <td style={{ ...cell, textAlign: "left" }}>
-                  <p style={{ fontWeight: 600, color: "#111827", margin: 0, fontSize: 12 }}>{c.name}</p>
-                  <p style={{ fontSize: 10, color: "#9ca3af", margin: "2px 0 0" }}>{c.startDate} – {c.endDate}</p>
-                </td>
-                <td style={{ ...cell, textAlign: "right", fontWeight: 600, color: "#111827", fontVariantNumeric: "tabular-nums" }}>
-                  {c.couponCount.toLocaleString("es-ES")}
-                </td>
-                <td style={{ ...cell, textAlign: "right", color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>
-                  {c.couponsGenerated != null ? c.couponsGenerated.toLocaleString("es-ES") : "—"}
-                </td>
-                <td style={{ ...cell, textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-                  <span style={{ fontWeight: 600, color: "#111827" }}>{c.couponsUsed.toLocaleString("es-ES")}</span>
-                  {c.couponsUsed > 0 && <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>({usedPct}%)</span>}
-                </td>
-                <td style={{ ...cell, textAlign: "right", color: "#6b7280", fontVariantNumeric: "tabular-nums" }}>
-                  {available.toLocaleString("es-ES")}
-                </td>
-                <td style={{ ...cell, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                  {totalPts > 0
-                    ? <><span style={{ fontWeight: 600, color: "#111827" }}>{totalPts.toLocaleString("es-ES")}</span><span style={{ color: "#9ca3af" }}> / {usedPts.toLocaleString("es-ES")}</span></>
-                    : <span style={{ color: "#d1d5db" }}>—</span>}
-                </td>
-                <td style={{ ...cell, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                  {sym && totalVal != null
-                    ? <><span style={{ fontWeight: 600, color: "#111827" }}>{sym} {totalVal.toLocaleString("es-ES")}</span><span style={{ color: "#9ca3af" }}> / {usedVal!.toLocaleString("es-ES")}</span></>
-                    : <span style={{ color: "#d1d5db" }}>—</span>}
-                </td>
-                <td style={{ ...cell, textAlign: "left" }}>
-                  <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 9999, fontSize: 10, fontWeight: 600, color: sc.text, background: sc.bg }}>
-                    {c.status}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      {/* ── Footer ── */}
-      <div style={{ marginTop: 32, paddingTop: 14, borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between" }}>
-        <p style={{ fontSize: 10, color: "#9ca3af", margin: 0 }}>Cuponera Pepsi · Análisis Funnel</p>
-        <p style={{ fontSize: 10, color: "#9ca3af", margin: 0 }}>Generado el {dateStr}</p>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#6b7280">Generado el</div>
+        <div style="font-size:13px;font-weight:600;margin-top:2px">${dateStr}</div>
+        <div style="font-size:12px;color:#7c3aed;margin-top:2px">${reportSnaps.length} día${reportSnaps.length !== 1 ? "s" : ""} cargado${reportSnaps.length !== 1 ? "s" : ""}</div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:2px">${periodStr}</div>
       </div>
     </div>
-  );
+
+    <!-- KPIs -->
+    <div style="font-size:15px;font-weight:700;margin-bottom:12px">Indicadores del Período</div>
+    <div class="grid4" style="margin-bottom:28px">
+      <div class="card"><div class="clabel">Eventos totales</div><div class="cval" style="color:#1a73e8">${n(totalEvents)}</div></div>
+      <div class="card"><div class="clabel">Usuarios únicos</div><div class="cval" style="color:#34a853">${n(totalUsers)}</div></div>
+      <div class="card"><div class="clabel">Cupones generados</div><div class="cval" style="color:#7c3aed">${n(totalGenerated)}</div></div>
+      <div class="card"><div class="clabel">Cupones canjeados</div><div class="cval" style="color:#f4511e">${n(totalRedeemed)}</div></div>
+    </div>
+
+    <!-- Funnel -->
+    <div style="font-size:15px;font-weight:700;margin-bottom:10px">Funnel Digital — Acumulado del Período</div>
+    <table style="margin-bottom:32px">
+      <thead><tr>
+        <th style="text-align:left">Etapa del Funnel</th>
+        <th style="text-align:right">Total eventos</th>
+        <th style="text-align:right">% del total</th>
+      </tr></thead>
+      <tbody>
+        ${funnelHTML}
+        <tr style="background:#f0fdf4;border-top:2px solid #86efac">
+          <td style="padding:9px 12px;font-weight:700;color:#166534">Conversión final (cupones generados)</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:700;color:#166534">${n(totalGenerated)}</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:700;color:#166534">${pct(totalGenerated, totalEvents)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Page break -->
+    <div class="pb"></div>
+
+    <!-- Campaigns -->
+    <div style="border-bottom:2px solid #7c3aed;padding-bottom:12px;margin-bottom:20px">
+      <div style="font-size:18px;font-weight:800">Campañas de Cupones</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:2px">Canjeados a la fecha · ${dateStr}</div>
+    </div>
+    <div class="grid4" style="margin-bottom:16px">
+      <div class="card"><div class="clabel">Total emitidos</div><div class="cval">${n(campTotalCoupons)}</div><div class="csub">en ${campaigns.length} campaña${campaigns.length !== 1 ? "s" : ""}</div></div>
+      <div class="card"><div class="clabel">Cupones generados</div><div class="cval">${n(campTotalGenerated)}</div><div class="csub">${pct(campTotalGenerated, campTotalCoupons)} del total</div></div>
+      <div class="card"><div class="clabel">Cupones canjeados</div><div class="cval">${n(campTotalUsed)}</div><div class="csub">${pct(campTotalUsed, campTotalCoupons)} del total</div></div>
+      <div class="card"><div class="clabel">Campañas activas</div><div class="cval">${campActiveCount}</div><div class="csub">${n(campTotalAvail)} cupones disponibles</div></div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Nombre de campaña</th>
+        <th style="text-align:right">Total</th>
+        <th style="text-align:right">Generados</th>
+        <th style="text-align:right">Canjeados</th>
+        <th style="text-align:right">Disponibles</th>
+        <th style="text-align:right">Puntos</th>
+        <th style="text-align:right">Valor</th>
+        <th>Estado</th>
+      </tr></thead>
+      <tbody>${campaignHTML}</tbody>
+    </table>
+
+    <!-- Footer -->
+    <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between">
+      <span style="font-size:10px;color:#9ca3af">Cuponera Pepsi · Análisis Funnel</span>
+      <span style="font-size:10px;color:#9ca3af">Generado el ${dateStr}</span>
+    </div>
+  </div>
+</body>
+</html>`;
 }
+
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
@@ -2479,6 +2454,7 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
 
 export default function AnalisisFunnelPage() {
   const { isAuthenticated } = useAuth();
+  const { campaigns } = useCampaigns();
   const [snapshots, setSnapshots] = useState<DaySnapshot[]>([]);
   const [view, setView] = useState<"dashboard" | "rendimiento" | "historico" | "cupones">("dashboard");
   const [period, setPeriod] = useState<Period>("semana");
@@ -2592,7 +2568,11 @@ export default function AnalisisFunnelPage() {
         <div className="flex items-center gap-2">
           {snapshots.length > 0 && (
             <button
-              onClick={() => window.print()}
+              onClick={() => {
+                const html = buildReportHTML(snapshots, campaigns);
+                const win = window.open("", "_blank");
+                if (win) { win.document.write(html); win.document.close(); }
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2687,7 +2667,6 @@ export default function AnalisisFunnelPage() {
         />
       )}
 
-      <PrintReport snapshots={snapshots} />
     </div>
   );
 }

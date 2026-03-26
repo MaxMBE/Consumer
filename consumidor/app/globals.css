@@ -18,33 +18,3 @@ body {
   box-sizing: border-box;
 }
 
-#pdf-report {
-  display: none;
-}
-
-@media print {
-  body * { visibility: hidden; }
-  #pdf-report {
-    display: block !important;
-    visibility: visible !important;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    background: white;
-    z-index: 99999;
-    padding: 1.5cm;
-    box-sizing: border-box;
-  }
-  #pdf-report * {
-    visibility: visible !important;
-  }
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  @page {
-    margin: 0;
-    size: A4 portrait;
-  }
-}
