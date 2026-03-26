@@ -2340,7 +2340,6 @@ function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[]): strin
 <body>
   <div class="toolbar">
     <button class="btn-c" onclick="window.close()">Cerrar</button>
-    <button class="btn-c" onclick="(function(){var b=new Blob([document.documentElement.outerHTML],{type:'text/html'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='reporte-funnel-pepsi.html';a.click()})()">&#8595; Descargar HTML</button>
     <button class="btn-p" onclick="window.print()">&#8595; Guardar como PDF</button>
   </div>
   <div class="page">
@@ -2568,19 +2567,41 @@ export default function AnalisisFunnelPage() {
         </div>
         <div className="flex items-center gap-2">
           {snapshots.length > 0 && (
-            <button
-              onClick={() => {
-                const html = buildReportHTML(snapshots, campaigns);
-                const win = window.open("", "_blank");
-                if (win) { win.document.write(html); win.document.close(); }
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Exportar PDF
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  const html = buildReportHTML(snapshots, campaigns);
+                  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "reporte-funnel-pepsi.html";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Descargar HTML
+              </button>
+              <button
+                onClick={() => {
+                  const html = buildReportHTML(snapshots, campaigns);
+                  const win = window.open("", "_blank");
+                  if (win) { win.document.write(html); win.document.close(); }
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Exportar PDF
+              </button>
+            </>
           )}
           {isAuthenticated && (
             <button
