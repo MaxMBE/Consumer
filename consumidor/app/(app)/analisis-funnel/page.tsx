@@ -2228,7 +2228,7 @@ function CuponesView() {
 
 // ─── PDF Report ───────────────────────────────────────────────────────────────
 
-function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[]): string {
+function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[], currentSnap: DaySnapshot | null, previousSnap: DaySnapshot | null): string {
   const today = new Date();
   const currentMonth = today.toISOString().slice(0, 7);
   const monthSnaps = snapshots.filter((s) => s.periodDate.startsWith(currentMonth));
@@ -2309,6 +2309,75 @@ function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[]): strin
     </tr>`;
   }).join("");
 
+  // ── Daily comparison ──
+  const chg = (curr: number, prev: number | null | undefined) => {
+    if (prev == null || prev === 0) return "";
+    const v = ((curr - prev) / prev) * 100;
+    const color = v >= 0 ? "#16a34a" : "#dc2626";
+    return `<span style="font-size:11px;font-weight:600;color:${color};margin-left:6px">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+  };
+
+  const kpiRowsHTML = currentSnap ? [
+    { label: "Eventos totales",    curr: currentSnap.totalEvents,  prev: previousSnap?.totalEvents,   dec: false },
+    { label: "Usuarios",           curr: currentSnap.totalUsers,   prev: previousSnap?.totalUsers,    dec: false },
+    { label: "Eventos por usuario",curr: currentSnap.eventsPerUser,prev: previousSnap?.eventsPerUser, dec: true  },
+    { label: "Cupones generados",  curr: currentSnap.funnel.find(f => f.eventName === "cupon_generado")?.events ?? 0,
+      prev: previousSnap?.funnel.find(f => f.eventName === "cupon_generado")?.events, dec: false },
+  ].map(({ label, curr, prev, dec }, i) => `
+    <tr style="background:${i % 2 === 0 ? "#fff" : "#fafafa"}">
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;color:#374151;font-weight:500">${label}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:700;color:#1a1a2e">
+        ${dec ? curr.toFixed(2) : n(curr)}${chg(curr, prev)}
+      </td>
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">
+        ${prev != null ? (dec ? prev.toFixed(2) : n(prev)) : "—"}
+      </td>
+    </tr>`).join("") : "";
+
+  const pv = currentSnap?.funnel.find(f => f.eventName === "page_view");
+  const funnelDayHTML = currentSnap ? STAGE_DEFS.map((def) => {
+    const curr = currentSnap.funnel.find(f => f.eventName === def.name)?.events ?? 0;
+    const prev = previousSnap?.funnel.find(f => f.eventName === def.name)?.events ?? null;
+    const conv = pv && pv.events > 0 && def.name !== "page_view" ? ((curr / pv.events) * 100).toFixed(1) + "%" : "—";
+    return { label: def.label, curr, prev, conv };
+  }).sort((a, b) => b.curr - a.curr).map(({ label, curr, prev, conv }, i) => `
+    <tr style="background:${i % 2 === 0 ? "#fff" : "#fafafa"}">
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;color:#374151">${label}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#1a1a2e">
+        ${n(curr)}${chg(curr, prev)}
+      </td>
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">${prev != null ? n(prev) : "—"}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:${conv === "—" ? "#9ca3af" : parseFloat(conv) < 10 ? "#ea580c" : "#16a34a"}">${conv}</td>
+    </tr>`).join("") : "";
+
+  const daySection = currentSnap ? `
+    <div class="pb"></div>
+    <div style="border-bottom:2px solid #7c3aed;padding-bottom:12px;margin-bottom:20px">
+      <div style="font-size:18px;font-weight:800">Análisis del Día · ${currentSnap.periodLabel}</div>
+      <div style="font-size:12px;color:#6b7280;margin-top:4px">
+        ${previousSnap ? `Comparación: vs ${previousSnap.periodLabel}` : "Sin comparación disponible"} · ${currentSnap.source}
+      </div>
+    </div>
+    <div style="font-size:15px;font-weight:700;margin-bottom:10px">KPIs Principales</div>
+    <table style="margin-bottom:24px">
+      <thead><tr>
+        <th style="text-align:left">Métrica</th>
+        <th style="text-align:right">${currentSnap.periodLabel}</th>
+        <th style="text-align:right">${previousSnap ? previousSnap.periodLabel : "Anterior"}</th>
+      </tr></thead>
+      <tbody>${kpiRowsHTML}</tbody>
+    </table>
+    <div style="font-size:15px;font-weight:700;margin-bottom:10px">Funnel Digital</div>
+    <table style="margin-bottom:32px">
+      <thead><tr>
+        <th style="text-align:left">Etapa</th>
+        <th style="text-align:right">Eventos</th>
+        <th style="text-align:right">Anterior</th>
+        <th style="text-align:right">Conversión</th>
+      </tr></thead>
+      <tbody>${funnelDayHTML}</tbody>
+    </table>` : "";
+
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -2384,8 +2453,7 @@ function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[]): strin
       </tbody>
     </table>
 
-    <!-- Page break -->
-    <div class="pb"></div>
+    ${daySection}
 
     <!-- Campaigns -->
     <div style="border-bottom:2px solid #7c3aed;padding-bottom:12px;margin-bottom:20px">
@@ -2570,7 +2638,7 @@ export default function AnalisisFunnelPage() {
             <>
               <button
                 onClick={() => {
-                  const html = buildReportHTML(snapshots, campaigns);
+                  const html = buildReportHTML(snapshots, campaigns, currentSnap, previousSnap);
                   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
@@ -2590,7 +2658,7 @@ export default function AnalisisFunnelPage() {
               </button>
               <button
                 onClick={() => {
-                  const html = buildReportHTML(snapshots, campaigns);
+                  const html = buildReportHTML(snapshots, campaigns, currentSnap, previousSnap);
                   const win = window.open("", "_blank");
                   if (win) { win.document.write(html); win.document.close(); }
                 }}
