@@ -1002,6 +1002,11 @@ function Dashboard({ current, previous }: { current: DaySnapshot; previous: DayS
       curr: current.funnel.find((f) => f.eventName === "cupon_generado")?.events ?? 0,
       prev: getP("cupon_generado"),
     },
+    {
+      label: "Cupones canjeados",
+      curr: current.funnel.find((f) => f.eventName === "cupones_canjeados")?.events ?? 0,
+      prev: getP("cupones_canjeados"),
+    },
   ];
 
   return (
@@ -2644,6 +2649,8 @@ function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[], curren
     { label: "Eventos por usuario",curr: currentSnap.eventsPerUser,prev: previousSnap?.eventsPerUser, dec: true  },
     { label: "Cupones generados",  curr: currentSnap.funnel.find(f => f.eventName === "cupon_generado")?.events ?? 0,
       prev: previousSnap?.funnel.find(f => f.eventName === "cupon_generado")?.events, dec: false },
+    { label: "Cupones canjeados",  curr: currentSnap.funnel.find(f => f.eventName === "cupones_canjeados")?.events ?? 0,
+      prev: previousSnap?.funnel.find(f => f.eventName === "cupones_canjeados")?.events, dec: false },
   ].map(({ label, curr, prev, dec }, i) => `
     <tr style="background:${i % 2 === 0 ? "#fff" : "#fafafa"}">
       <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;color:#374151;font-weight:500">${label}</td>
