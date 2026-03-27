@@ -241,7 +241,7 @@ function parseGA4MonthCSV(text: string): Partial<DaySnapshot>[] {
       const te = totalEvents || funnel.reduce((s, f) => s + f.events, 0);
       const tu = totalUsers  || (funnel.find((f) => f.eventName === "session_start")?.events ?? 0);
       return { periodDate: iso, periodLabel: labelFromIso(iso), source: "Google Analytics – Cuponera Pepsi", totalEvents: te, totalUsers: tu, eventsPerUser, funnel };
-    }).filter((s): s is Partial<DaySnapshot> => s !== null);
+    }).filter((s) => s !== null) as Partial<DaySnapshot>[];
   }
 
   return [];
