@@ -1806,8 +1806,12 @@ function DashboardView({
       </div>
     );
   }
+  const sorted = [...snapshots].sort((a, b) => b.periodDate.localeCompare(a.periodDate));
+  const current  = sorted[0];
+  const previous = sorted[1] ?? null;
   return (
     <div className="space-y-5">
+      <Dashboard current={current} previous={previous} />
       <EventsChart snapshots={snapshots} />
       <EventsTableGA4 snapshots={snapshots} onUpdateManual={onUpdateManual} canEdit={canEdit} />
     </div>
