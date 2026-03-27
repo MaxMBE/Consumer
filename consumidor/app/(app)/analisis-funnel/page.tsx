@@ -1101,7 +1101,14 @@ function Dashboard({ current, previous }: { current: DaySnapshot; previous: DayS
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {current.funnel.map((stage, idx) => {
+                {[
+                  ...current.funnel.filter((s) => s.eventName !== "cupones_canjeados"),
+                  {
+                    eventName: "cupones_canjeados",
+                    label: "Cupones canjeados",
+                    events: current.funnel.find((f) => f.eventName === "cupones_canjeados")?.events ?? 0,
+                  },
+                ].map((stage, idx) => {
                   const prevEvts = getP(stage.eventName);
                   const convRate = idx === 0 || !pv ? null : Math.round((stage.events / pv.events) * 1000) / 10;
                   const evtCh2 = prevEvts !== null ? calcPct(stage.events, prevEvts) : null;
