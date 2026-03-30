@@ -22,8 +22,13 @@ const statusColor: Record<CampaignStatus, string> = {
   Inactivo: "text-orange-400",
 };
 
-function isEditable(status: CampaignStatus) {
-  return status === "Borrador" || status === "Por comenzar";
+interface EditForm {
+  startDate: string;
+  endDate: string;
+  couponCount: string;
+  pointsPerCoupon: string;
+  artFile: File | null;
+  artName: string;
 }
 
 interface Props {
@@ -33,11 +38,21 @@ interface Props {
 
 export default function CampaignDrawer({ campaign, onClose }: Props) {
   const router = useRouter();
-  const { confirmCampaign, cancelCampaign } = useCampaigns();
+  const { confirmCampaign, cancelCampaign, updateCampaign } = useCampaigns();
   const { isAuthenticated } = useAuth();
   const [tab, setTab] = useState<"info" | "config">("info");
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm>({
+    startDate: campaign.startDate,
+    endDate: campaign.endDate,
+    couponCount: String(campaign.couponCount),
+    pointsPerCoupon: String(campaign.pointsPerCoupon),
+    artFile: null,
+    artName: campaign.materialName ?? "",
+  });
+  const [saving, setSaving] = useState(false);
 
   const percentage = campaign.couponCount > 0
     ? Math.round((campaign.couponsUsed / campaign.couponCount) * 100)
@@ -46,13 +61,32 @@ export default function CampaignDrawer({ campaign, onClose }: Props) {
   const totalPoints = campaign.couponCount * campaign.pointsPerCoupon;
   const usedPoints = campaign.couponsUsed * campaign.pointsPerCoupon;
 
-  const canEdit = isEditable(campaign.status);
   const canConfirm = campaign.status === "Borrador";
   const canCancel = campaign.status === "Activo" || campaign.status === "Por comenzar";
 
   function handleEdit() {
-    router.push(`/cupones/crear?edit=${campaign.id}`);
-    onClose();
+    setEditForm({
+      startDate: campaign.startDate,
+      endDate: campaign.endDate,
+      couponCount: String(campaign.couponCount),
+      pointsPerCoupon: String(campaign.pointsPerCoupon),
+      artFile: null,
+      artName: campaign.materialName ?? "",
+    });
+    setShowEditModal(true);
+  }
+
+  async function handleSaveEdit() {
+    setSaving(true);
+    await updateCampaign(campaign.id, {
+      startDate: editForm.startDate,
+      endDate: editForm.endDate,
+      couponCount: Number(editForm.couponCount) || 0,
+      pointsPerCoupon: Number(editForm.pointsPerCoupon) || 0,
+      materialName: editForm.artFile ? editForm.artFile.name : editForm.artName || undefined,
+    });
+    setSaving(false);
+    setShowEditModal(false);
   }
 
   function handleAnalytics() {
@@ -277,7 +311,7 @@ export default function CampaignDrawer({ campaign, onClose }: Props) {
                 Confirmar campaña
               </button>
             )}
-            {isAuthenticated && canEdit && (
+            {isAuthenticated && (
               <button
                 onClick={handleEdit}
                 className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 py-2.5 rounded-full text-sm font-medium transition-colors"
@@ -292,11 +326,6 @@ export default function CampaignDrawer({ campaign, onClose }: Props) {
               >
                 Cancelar campaña
               </button>
-            )}
-            {!canConfirm && !canEdit && !canCancel && (
-              <p className="text-sm text-gray-400 text-center w-full py-1">
-                Esta campaña no puede ser modificada.
-              </p>
             )}
           </div>
           {campaign.status !== "Borrador" && (
@@ -340,6 +369,126 @@ export default function CampaignDrawer({ campaign, onClose }: Props) {
                 className="flex-1 bg-purple-600 text-white py-2.5 rounded-full text-sm font-medium hover:bg-purple-700 transition-colors"
               >
                 Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit campaign modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setShowEditModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-semibold text-gray-900">Editar campaña</h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Fechas */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Fecha de inicio</label>
+                  <input
+                    type="date"
+                    value={editForm.startDate}
+                    onChange={(e) => setEditForm((f) => ({ ...f, startDate: e.target.value }))}
+                    className="w-full border-b border-gray-300 focus:border-purple-500 outline-none text-sm py-2 bg-transparent transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Fecha de término</label>
+                  <input
+                    type="date"
+                    value={editForm.endDate}
+                    min={editForm.startDate}
+                    onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))}
+                    className="w-full border-b border-gray-300 focus:border-purple-500 outline-none text-sm py-2 bg-transparent transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Cupones y valor */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Cantidad de cupones</label>
+                  <input
+                    type="number"
+                    value={editForm.couponCount}
+                    onChange={(e) => setEditForm((f) => ({ ...f, couponCount: e.target.value }))}
+                    placeholder="0"
+                    className="w-full border-b border-gray-300 focus:border-purple-500 outline-none text-sm py-2 bg-transparent transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Valor por cupón (pts)</label>
+                  <input
+                    type="number"
+                    value={editForm.pointsPerCoupon}
+                    onChange={(e) => setEditForm((f) => ({ ...f, pointsPerCoupon: e.target.value }))}
+                    placeholder="0"
+                    className="w-full border-b border-gray-300 focus:border-purple-500 outline-none text-sm py-2 bg-transparent transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Monto calculado */}
+              {editForm.couponCount && editForm.pointsPerCoupon && (
+                <div className="bg-purple-50 rounded-lg px-4 py-3 flex items-center justify-between">
+                  <span className="text-xs text-purple-600 font-medium">Monto total campaña</span>
+                  <span className="text-sm font-bold text-purple-700">
+                    Q {(Number(editForm.couponCount) * Number(editForm.pointsPerCoupon)).toLocaleString()}
+                  </span>
+                </div>
+              )}
+
+              {/* Arte */}
+              <div>
+                <label className="block text-xs text-gray-400 mb-2">Arte de campaña</label>
+                <div className="border border-dashed border-gray-200 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700">
+                      {editForm.artFile ? editForm.artFile.name : editForm.artName || "Sin arte seleccionado"}
+                    </p>
+                    <p className="text-xs text-gray-400">Formato: png, jpg</p>
+                  </div>
+                  <label className="px-4 py-1.5 border border-gray-300 rounded-full text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors">
+                    {editForm.artFile || editForm.artName ? "Cambiar" : "Subir"}
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        setEditForm((f) => ({ ...f, artFile: file, artName: file?.name ?? f.artName }));
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="flex-1 border border-gray-300 text-gray-700 py-2.5 rounded-full text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="flex-1 bg-purple-600 text-white py-2.5 rounded-full text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-60"
+              >
+                {saving ? "Guardando..." : "Guardar cambios"}
               </button>
             </div>
           </div>
