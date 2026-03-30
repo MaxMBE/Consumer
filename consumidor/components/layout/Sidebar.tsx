@@ -6,12 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context";
 
 const PUBLIC_ITEMS = [
+  { label: "Pepsi Cupones", href: "/cupones", icon: "🎫" },
   { label: "Análisis Funnel", href: "/analisis-funnel", icon: "📊" },
 ];
 
-const PRIVATE_ITEMS = [
-  { label: "Pepsi Cupones", href: "/cupones", icon: "🎫" },
-];
+const PRIVATE_ITEMS: { label: string; href: string; icon: string }[] = [];
 
 export default function Sidebar() {
   const pathname = usePathname();
