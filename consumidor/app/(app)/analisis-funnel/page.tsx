@@ -1372,14 +1372,66 @@ function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
   ).sort();
 
   const latestMonth = availableMonths[availableMonths.length - 1] ?? "";
+
+  // ─── Granularity state ───────────────────────────────────────────────────────
+  const [granularity, setGranularity] = useState<"mensual" | "semanal" | "dias">("mensual");
   const [selectedMonth, setSelectedMonth] = useState<string>(latestMonth);
+  const [selectedWeek, setSelectedWeek] = useState<number>(1);
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
   // Sincronizar si llegan nuevos datos
   const effectiveMonth = availableMonths.includes(selectedMonth) ? selectedMonth : latestMonth;
 
-  const sorted = effectiveMonth
-    ? allSorted.filter((s) => s.periodDate.startsWith(effectiveMonth))
-    : allSorted;
+  // Days available in the selected month
+  const daysInMonth = allSorted.filter((s) => s.periodDate.startsWith(effectiveMonth));
+
+  // Week ranges within the selected month (groups of 7 starting day 1)
+  const weekRanges = (() => {
+    const days = Array.from(new Set(daysInMonth.map((s) => s.periodDate))).sort();
+    if (days.length === 0) return [];
+    const firstDay = parseInt(days[0].split("-")[2], 10);
+    const lastDay  = parseInt(days[days.length - 1].split("-")[2], 10);
+    const ranges: { label: string; from: number; to: number }[] = [];
+    for (let start = 1; start <= lastDay; start += 7) {
+      const end = Math.min(start + 6, lastDay);
+      if (start <= lastDay) {
+        ranges.push({
+          label: `${start} – ${end} ${MONTH_NAMES[effectiveMonth.split("-")[1]] ?? ""} ${effectiveMonth.split("-")[0]}`,
+          from: start,
+          to: end,
+        });
+      }
+    }
+    return ranges;
+  })();
+
+  // Available dates in month for "dias" pickers
+  const availableDatesInMonth = Array.from(
+    new Set(daysInMonth.map((s) => s.periodDate))
+  ).sort();
+  const minDate = availableDatesInMonth[0] ?? "";
+  const maxDate = availableDatesInMonth[availableDatesInMonth.length - 1] ?? "";
+
+  // ─── Filtered data based on granularity ─────────────────────────────────────
+  const sorted = (() => {
+    const base = daysInMonth;
+    if (granularity === "mensual") return base;
+    if (granularity === "semanal") {
+      const range = weekRanges[selectedWeek - 1];
+      if (!range) return base;
+      return base.filter((s) => {
+        const day = parseInt(s.periodDate.split("-")[2], 10);
+        return day >= range.from && day <= range.to;
+      });
+    }
+    if (granularity === "dias") {
+      const f = fromDate || minDate;
+      const t = toDate || maxDate;
+      return base.filter((s) => s.periodDate >= f && s.periodDate <= t);
+    }
+    return base;
+  })();
 
   const [visible, setVisible] = useState<Set<string>>(
     () => new Set(["total", ...STAGE_DEFS.map((d) => d.name)])
@@ -1432,24 +1484,84 @@ function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">
+      <div className="flex items-start justify-between gap-4">
+        <h2 className="text-sm font-semibold text-gray-900 pt-1">
           Número de eventos por Nombre del evento a lo largo del tiempo
         </h2>
-        <select
-          value={effectiveMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
-        >
-          {availableMonths.map((m) => {
-            const [year, mon] = m.split("-");
-            return (
-              <option key={m} value={m}>
-                {MONTH_NAMES[mon] ?? m} {year}
-              </option>
-            );
-          })}
-        </select>
+
+        {/* ─── Range selector ─── */}
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+          {/* Granularity tabs */}
+          <div className="flex gap-0.5 bg-gray-100 rounded-lg p-0.5 text-xs font-medium">
+            {(["mensual", "semanal", "dias"] as const).map((g) => (
+              <button
+                key={g}
+                onClick={() => setGranularity(g)}
+                className={`px-3 py-1.5 rounded-md transition-colors capitalize ${
+                  granularity === g
+                    ? "bg-white text-purple-700 shadow-sm font-semibold"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {g === "mensual" ? "Mensual" : g === "semanal" ? "Semanal" : "Días"}
+              </button>
+            ))}
+          </div>
+
+          {/* Month picker — always visible */}
+          <select
+            value={effectiveMonth}
+            onChange={(e) => { setSelectedMonth(e.target.value); setSelectedWeek(1); setFromDate(""); setToDate(""); }}
+            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+          >
+            {availableMonths.map((m) => {
+              const [year, mon] = m.split("-");
+              return (
+                <option key={m} value={m}>
+                  {MONTH_NAMES[mon] ?? m} {year}
+                </option>
+              );
+            })}
+          </select>
+
+          {/* Semanal: week selector */}
+          {granularity === "semanal" && weekRanges.length > 0 && (
+            <select
+              value={selectedWeek}
+              onChange={(e) => setSelectedWeek(Number(e.target.value))}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+            >
+              {weekRanges.map((w, i) => (
+                <option key={i} value={i + 1}>
+                  Semana {i + 1} ({w.label})
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* Días: from / to pickers */}
+          {granularity === "dias" && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={fromDate || minDate}
+                min={minDate}
+                max={toDate || maxDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+              <span className="text-xs text-gray-400">—</span>
+              <input
+                type="date"
+                value={toDate || maxDate}
+                min={fromDate || minDate}
+                max={maxDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {sorted.length < 2 ? (
