@@ -1363,7 +1363,15 @@ const MONTH_NAMES: Record<string, string> = {
   "09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre",
 };
 
-function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
+function EventsChart({
+  snapshots,
+  selectedMonth,
+  onMonthChange,
+}: {
+  snapshots: DaySnapshot[];
+  selectedMonth: string;
+  onMonthChange: (month: string) => void;
+}) {
   const allSorted = [...snapshots].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
 
   // Meses disponibles a partir de los datos (ej: "2026-03")
@@ -1375,7 +1383,6 @@ function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
 
   // ─── Granularity state ───────────────────────────────────────────────────────
   const [granularity, setGranularity] = useState<"mensual" | "semanal" | "dias">("mensual");
-  const [selectedMonth, setSelectedMonth] = useState<string>(latestMonth);
   const [selectedWeek, setSelectedWeek] = useState<number>(1);
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
@@ -1511,7 +1518,7 @@ function EventsChart({ snapshots }: { snapshots: DaySnapshot[] }) {
           {/* Month picker — always visible */}
           <select
             value={effectiveMonth}
-            onChange={(e) => { setSelectedMonth(e.target.value); setSelectedWeek(1); setFromDate(""); setToDate(""); }}
+            onChange={(e) => { onMonthChange(e.target.value); setSelectedWeek(1); setFromDate(""); setToDate(""); }}
             className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
           >
             {availableMonths.map((m) => {
@@ -1918,6 +1925,13 @@ function DashboardView({
   onUpdateManual: (snapshotId: string, eventName: string, value: number) => Promise<void>;
   canEdit: boolean;
 }) {
+  const allSorted = [...snapshots].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
+  const availableMonths = Array.from(new Set(allSorted.map((s) => s.periodDate.slice(0, 7)))).sort();
+  const latestMonth = availableMonths[availableMonths.length - 1] ?? "";
+  const [selectedMonth, setSelectedMonth] = useState<string>(latestMonth);
+  const effectiveMonth = availableMonths.includes(selectedMonth) ? selectedMonth : latestMonth;
+  const monthSnapshots = snapshots.filter((s) => s.periodDate.startsWith(effectiveMonth));
+
   if (snapshots.length === 0) {
     return (
       <div className="text-center py-20 text-gray-400 text-sm">
@@ -1927,8 +1941,8 @@ function DashboardView({
   }
   return (
     <div className="space-y-5">
-      <EventsChart snapshots={snapshots} />
-      <EventsTableGA4 snapshots={snapshots} onUpdateManual={onUpdateManual} canEdit={canEdit} />
+      <EventsChart snapshots={snapshots} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
+      <EventsTableGA4 snapshots={monthSnapshots} onUpdateManual={onUpdateManual} canEdit={canEdit} />
     </div>
   );
 }
