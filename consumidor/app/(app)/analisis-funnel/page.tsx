@@ -87,7 +87,8 @@ async function extractPDFText(file: File): Promise<string> {
 //
 function parseGA4SingleDay(raw: string): Partial<DaySnapshot> {
   // 1. Orden de eventos: "1 page_view", "2 scroll", etc.
-  const ordRx = /\b([1-9])\s+(page_view|scroll|session_start|first_visit|user_engagement|cupon_generado|registro_usuario|cupones_canjeados)\b/gi;
+  //    `coupon_redeemed` es el nombre en GA4; internamente lo guardamos como `cupones_canjeados`.
+  const ordRx = /\b([1-9])\s+(page_view|scroll|session_start|first_visit|user_engagement|cupon_generado|registro_usuario|coupon_redeemed|cupones_canjeados)\b/gi;
   const ordMatches = [...raw.matchAll(ordRx)].sort((a, b) => parseInt(a[1]) - parseInt(b[1]));
 
   // 2. Sección de números: todo lo que está ANTES del primer nombre con ordinal
@@ -106,7 +107,8 @@ function parseGA4SingleDay(raw: string): Partial<DaySnapshot> {
   // 4. Construir funnel mapeando por posición ordinal
   const funnel: DayStage[] = ordMatches
     .map((m, idx) => {
-      const name = m[2].toLowerCase();
+      let name = m[2].toLowerCase();
+      if (name === "coupon_redeemed") name = "cupones_canjeados";
       const def = STAGE_DEFS.find((d) => d.name === name);
       if (!def) return null;
       const events = allNums[idx * numsPerEvent] ?? 0;
@@ -345,18 +347,8 @@ function UploadModal({
       setRawText(text);
       const parsed = parseGA4SingleDay(text);
       const f = parsedToForm(parsed);
-      // Preserve manual fields from existing snapshot
       const existing = snapshots.find((s) => s.periodDate === f.periodDate);
-      if (existing) {
-        setUpdateMode(true);
-        for (const manualEvent of ["cupones_canjeados"]) {
-          const existingVal = existing.funnel.find((ev) => ev.eventName === manualEvent)?.events ?? 0;
-          const idx = f.stages.findIndex((s) => s.eventName === manualEvent);
-          if (idx !== -1) f.stages[idx] = { ...f.stages[idx], events: String(existingVal || "") };
-        }
-      } else {
-        setUpdateMode(false);
-      }
+      setUpdateMode(Boolean(existing));
       setForm(f);
     } catch {
       setForm(emptyForm());
@@ -558,56 +550,24 @@ function UploadModal({
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Funnel digital</h3>
                 <div className="space-y-2">
-                  {form.stages
-                    .filter((s) => s.eventName !== "cupones_canjeados")
-                    .map((stage) => {
-                      const idx = form.stages.findIndex((s) => s.eventName === stage.eventName);
-                      return (
-                        <div key={stage.eventName} className="flex items-center gap-3">
-                          <label className="text-sm text-gray-700 w-44 flex-shrink-0">{stage.label}</label>
-                          <input
-                            className={inputCls}
-                            placeholder="0"
-                            value={stage.events}
-                            onChange={(e) => {
-                              const stages = [...form.stages];
-                              stages[idx] = { ...stages[idx], events: e.target.value };
-                              setForm((f) => ({ ...f, stages }));
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-
-              {/* Datos manuales */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Datos manuales</h3>
-                  <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-medium">Ingreso manual</span>
-                </div>
-                <div className="space-y-2">
-                  {form.stages
-                    .filter((s) => s.eventName === "cupones_canjeados")
-                    .map((stage) => {
-                      const idx = form.stages.findIndex((s) => s.eventName === stage.eventName);
-                      return (
-                        <div key={stage.eventName} className="flex items-center gap-3">
-                          <label className="text-sm text-gray-700 w-44 flex-shrink-0">{stage.label}</label>
-                          <input
-                            className={inputCls}
-                            placeholder="0"
-                            value={stage.events}
-                            onChange={(e) => {
-                              const stages = [...form.stages];
-                              stages[idx] = { ...stages[idx], events: e.target.value };
-                              setForm((f) => ({ ...f, stages }));
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
+                  {form.stages.map((stage) => {
+                    const idx = form.stages.findIndex((s) => s.eventName === stage.eventName);
+                    return (
+                      <div key={stage.eventName} className="flex items-center gap-3">
+                        <label className="text-sm text-gray-700 w-44 flex-shrink-0">{stage.label}</label>
+                        <input
+                          className={inputCls}
+                          placeholder="0"
+                          value={stage.events}
+                          onChange={(e) => {
+                            const stages = [...form.stages];
+                            stages[idx] = { ...stages[idx], events: e.target.value };
+                            setForm((f) => ({ ...f, stages }));
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1374,7 +1334,7 @@ function EventsChart({
   );
 }
 
-const MANUAL_EVENTS = new Set(["registro_usuario", "cupones_canjeados"]);
+const MANUAL_EVENTS = new Set(["registro_usuario"]);
 
 function ManualEditModal({
   eventName,
