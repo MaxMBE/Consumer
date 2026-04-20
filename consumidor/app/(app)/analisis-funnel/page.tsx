@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useCampaigns, useAuth } from "@/context";
 import type { Campaign } from "@/context/CampaignsContext";
 import { supabase } from "@/lib/supabase";
+import { COUNTRIES, type CountryCode, type CountryMeta } from "@/lib/countries";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,8 +13,6 @@ interface DayStage {
   label: string;
   events: number;
 }
-
-type CountryCode = "GT" | "EC" | "PE";
 
 interface DaySnapshot {
   id: string;
@@ -27,12 +26,6 @@ interface DaySnapshot {
   funnel: DayStage[];
   country?: CountryCode;
 }
-
-const COUNTRIES: { code: CountryCode; name: string; flag: string }[] = [
-  { code: "GT", name: "Guatemala", flag: "🇬🇹" },
-  { code: "EC", name: "Ecuador",   flag: "🇪🇨" },
-  { code: "PE", name: "Perú",      flag: "🇵🇪" },
-];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -329,7 +322,7 @@ function UploadModal({
   snapshots: DaySnapshot[];
   existingDates: string[];
   latestDate: string | null;
-  country: { code: CountryCode; name: string; flag: string };
+  country: CountryMeta;
 }) {
   const [step, setStep] = useState<"upload" | "review">("upload");
   const [loading, setLoading] = useState(false);
@@ -1741,8 +1734,9 @@ const EMPTY_CAMPAIGN_FORM = {
   campaignLink: "", pointsPerCoupon: "0", valuePerCoupon: "", currency: "",
 };
 
-function CuponesView() {
-  const { campaigns, addCampaign, updateCampaign, deleteCampaign } = useCampaigns();
+function CuponesView({ country }: { country: CountryMeta }) {
+  const { campaigns: allCampaigns, addCampaign, updateCampaign, deleteCampaign } = useCampaigns();
+  const campaigns = allCampaigns.filter((c) => (c.country ?? "GT") === country.code);
   const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
@@ -1825,6 +1819,7 @@ function CuponesView() {
       tenderoDescription: "",
       valuePerCoupon: createForm.valuePerCoupon !== "" ? parseFloat(createForm.valuePerCoupon) : undefined,
       currency: createForm.currency || undefined,
+      country: country.code,
     });
     setCreating(false);
     setShowCreate(false);
@@ -1853,9 +1848,35 @@ function CuponesView() {
   const totalAvailable = totalCoupons - totalUsed;
   const totalActive = cardBase.filter((c) => c.status === "Activo").length;
   const isFiltered = statusFilter !== "Todos";
+  const isEmpty = campaigns.length === 0;
 
   return (
     <div className="space-y-5">
+      {isEmpty ? (
+        <div className="bg-white rounded-2xl border border-gray-200 py-16 px-6 flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4 text-3xl">
+            {country.flag}
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">
+            Sin campañas para {country.name}
+          </h2>
+          <p className="text-sm text-gray-500 max-w-sm mb-6">
+            Todavía no hay campañas cargadas para {country.name}. Creá la primera campaña para este país.
+          </p>
+          {isAuthenticated && (
+            <button
+              onClick={() => { setCreateForm(EMPTY_CAMPAIGN_FORM); setShowCreate(true); }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Nueva campaña
+            </button>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
@@ -1998,6 +2019,8 @@ function CuponesView() {
         </table>
       </div>
       </div>
+      </>
+      )}
 
       {/* Detail modal */}
       {detailId && (() => {
@@ -2374,7 +2397,7 @@ function CuponesView() {
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
-function EmptyState({ onUpload, country }: { onUpload: () => void; country: { code: CountryCode; name: string; flag: string } }) {
+function EmptyState({ onUpload, country }: { onUpload: () => void; country: CountryMeta }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4 text-3xl">
@@ -2624,7 +2647,7 @@ export default function AnalisisFunnelPage() {
           setComparisonId={setComparisonId}
         />
       )}
-      {view === "cupones" && <CuponesView />}
+      {view === "cupones" && <CuponesView country={activeCountry} />}
       {view === "historico" && (
         <Historical
           snapshots={countrySnapshots}

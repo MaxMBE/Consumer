@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import type { CountryCode } from "@/lib/countries";
 
 export type CampaignStatus =
   | "Borrador"
@@ -31,6 +32,7 @@ export interface Campaign {
   valuePerCoupon?: number;
   currency?: string;
   couponsGenerated?: number;
+  country?: CountryCode;
 }
 
 interface CampaignsContextType {
@@ -68,6 +70,7 @@ function rowToCampaign(row: Record<string, unknown>): Campaign {
     valuePerCoupon: (row.value_per_coupon as number) ?? undefined,
     currency: (row.currency as string) ?? undefined,
     couponsGenerated: (row.coupons_generated as number) ?? undefined,
+    country: ((row.country as CountryCode | null) ?? "GT") as CountryCode,
   };
 }
 
@@ -92,6 +95,7 @@ function campaignToRow(c: Campaign) {
     value_per_coupon: c.valuePerCoupon ?? null,
     currency: c.currency ?? null,
     coupons_generated: c.couponsGenerated ?? null,
+    country: c.country ?? "GT",
   };
 }
 
@@ -222,6 +226,7 @@ export function CampaignsProvider({ children }: { children: ReactNode }) {
       createdBy: "USER_TRADER_PROD",
       couponsUsed: 0,
       campaignLink: link,
+      country: data.country ?? "GT",
     };
     await supabase.from("campaigns").insert(campaignToRow(newCampaign));
     setCampaigns((prev) => [newCampaign, ...prev]);
