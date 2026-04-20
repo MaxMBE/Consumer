@@ -13,6 +13,8 @@ interface DayStage {
   events: number;
 }
 
+type CountryCode = "GT" | "EC" | "PE";
+
 interface DaySnapshot {
   id: string;
   savedAt: string;
@@ -23,7 +25,14 @@ interface DaySnapshot {
   totalUsers: number;
   eventsPerUser: number;
   funnel: DayStage[];
+  country?: CountryCode;
 }
+
+const COUNTRIES: { code: CountryCode; name: string; flag: string }[] = [
+  { code: "GT", name: "Guatemala", flag: "🇬🇹" },
+  { code: "EC", name: "Ecuador",   flag: "🇪🇨" },
+  { code: "PE", name: "Perú",      flag: "🇵🇪" },
+];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -152,339 +161,6 @@ function parseGA4SingleDay(raw: string): Partial<DaySnapshot> {
     eventsPerUser,
     funnel,
   };
-}
-
-// ─── GA4 Monthly CSV Parser ───────────────────────────────────────────────────
-//
-// Soporta el CSV que exporta GA4 en "Eventos" con "Fecha" como dimensión
-// secundaria. Formato esperado:
-//   Nombre del evento,Fecha,Recuento de eventos
-//   page_view,20260301,1500
-//   ...
-// También soporta formato manual:
-//   date,total_events,total_users,events_per_user,page_view,scroll,...
-//
-function parseGA4MonthCSV(text: string): Partial<DaySnapshot>[] {
-  const clean = text.replace(/^\uFEFF/, "");
-  const lines = clean.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-  if (lines.length < 2) return [];
-
-  const parseCols = (line: string) =>
-    line.split(",").map((c) => c.replace(/^"|"$/g, "").trim());
-
-  const header = parseCols(lines[0]).map((h) => h.toLowerCase());
-
-  const months = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
-  const isoFromRaw = (raw: string) => {
-    if (/^\d{8}$/.test(raw)) return `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}`;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-    return null;
-  };
-  const labelFromIso = (iso: string) => {
-    const d = new Date(iso + "T12:00:00");
-    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-  };
-
-  // ── Format A: GA4 events-by-date export ──
-  const eiName = header.findIndex((h) => h.includes("event") || h.includes("evento"));
-  const eiDate = header.findIndex((h) => h === "fecha" || h === "date");
-  const eiCount = header.findIndex((h) => h.includes("recuento") || h.includes("count") || h.includes("events"));
-
-  if (eiName !== -1 && eiDate !== -1 && eiCount !== -1) {
-    const byDate: Record<string, Record<string, number>> = {};
-    for (const line of lines.slice(1)) {
-      const cols = parseCols(line);
-      const rawEvent = cols[eiName]?.toLowerCase() ?? "";
-      const rawDate  = cols[eiDate] ?? "";
-      const count    = parseInt(cols[eiCount]?.replace(/\D/g, "") ?? "0") || 0;
-      const iso = isoFromRaw(rawDate);
-      if (!iso || !rawEvent || rawEvent === "(not set)") continue;
-      if (!byDate[iso]) byDate[iso] = {};
-      byDate[iso][rawEvent] = (byDate[iso][rawEvent] ?? 0) + count;
-    }
-
-    return Object.entries(byDate)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([iso, events]) => {
-        const totalEvents = Object.values(events).reduce((s, v) => s + v, 0);
-        const totalUsers  = events["session_start"] ?? events["first_visit"] ?? 0;
-        const eventsPerUser = totalUsers > 0 ? Math.round((totalEvents / totalUsers) * 100) / 100 : 0;
-        const funnel = STAGE_DEFS
-          .filter((d) => events[d.name] != null)
-          .map((d) => ({ eventName: d.name, label: d.label, events: events[d.name] }));
-        return { periodDate: iso, periodLabel: labelFromIso(iso), source: "Google Analytics – Cuponera Pepsi", totalEvents, totalUsers, eventsPerUser, funnel };
-      });
-  }
-
-  // ── Format B: manual CSV with event columns in header ──
-  // date,total_events,total_users,events_per_user,page_view,scroll,...
-  const dateIdx = header.findIndex((h) => h === "date" || h === "fecha");
-  if (dateIdx !== -1) {
-    const eventCols = STAGE_DEFS.map((d) => ({
-      def: d,
-      idx: header.findIndex((h) => h === d.name),
-    })).filter((c) => c.idx !== -1);
-
-    const getNum = (cols: string[], key: string) =>
-      parseFloat(cols[header.indexOf(key)]?.replace(",", ".") ?? "0") || 0;
-
-    return lines.slice(1).map((line) => {
-      const cols = parseCols(line);
-      const iso  = isoFromRaw(cols[dateIdx]);
-      if (!iso) return null;
-      const totalEvents   = getNum(cols, "total_events");
-      const totalUsers    = getNum(cols, "total_users");
-      const eventsPerUser = getNum(cols, "events_per_user");
-      const funnel = eventCols
-        .map(({ def, idx }) => ({ eventName: def.name, label: def.label, events: parseInt(cols[idx]) || 0 }))
-        .filter((s) => s.events > 0);
-      const te = totalEvents || funnel.reduce((s, f) => s + f.events, 0);
-      const tu = totalUsers  || (funnel.find((f) => f.eventName === "session_start")?.events ?? 0);
-      return { periodDate: iso, periodLabel: labelFromIso(iso), source: "Google Analytics – Cuponera Pepsi", totalEvents: te, totalUsers: tu, eventsPerUser, funnel };
-    }).filter((s) => s !== null) as Partial<DaySnapshot>[];
-  }
-
-  return [];
-}
-
-// ─── Monthly Upload Modal ─────────────────────────────────────────────────────
-
-function MonthUploadModal({
-  onClose,
-  onBulkSave,
-  snapshots,
-}: {
-  onClose: () => void;
-  onBulkSave: (toInsert: DaySnapshot[], toUpdate: { id: string; snap: DaySnapshot }[]) => Promise<void>;
-  snapshots: DaySnapshot[];
-}) {
-  const [step, setStep]       = useState<"upload" | "preview">("upload");
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving]   = useState(false);
-  const [parsed, setParsed]   = useState<Partial<DaySnapshot>[]>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const handleFile = async (file: File) => {
-    setLoading(true);
-    try {
-      const text = await file.text();
-      const result = parseGA4MonthCSV(text);
-      setParsed(result);
-      setStep("preview");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    const toInsert: DaySnapshot[] = [];
-    const toUpdate: { id: string; snap: DaySnapshot }[] = [];
-
-    for (const p of parsed) {
-      if (!p.periodDate) continue;
-      const existing = snapshots.find((s) => s.periodDate === p.periodDate);
-      const snap: DaySnapshot = {
-        id: existing?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        savedAt: new Date().toISOString(),
-        source: p.source ?? "Google Analytics – Cuponera Pepsi",
-        periodLabel: p.periodLabel ?? p.periodDate,
-        periodDate: p.periodDate,
-        totalEvents: p.totalEvents ?? 0,
-        totalUsers: p.totalUsers ?? 0,
-        eventsPerUser: p.eventsPerUser ?? 0,
-        funnel: [...(p.funnel ?? [])],
-      };
-      // Preserve manually entered cupones_canjeados
-      if (existing) {
-        const manualVal = existing.funnel.find((f) => f.eventName === "cupones_canjeados")?.events ?? 0;
-        const def = STAGE_DEFS.find((d) => d.name === "cupones_canjeados")!;
-        const idx = snap.funnel.findIndex((f) => f.eventName === "cupones_canjeados");
-        if (manualVal > 0) {
-          if (idx !== -1) snap.funnel[idx].events = manualVal;
-          else snap.funnel.push({ eventName: "cupones_canjeados", label: def.label, events: manualVal });
-        }
-        toUpdate.push({ id: existing.id, snap });
-      } else {
-        toInsert.push(snap);
-      }
-    }
-
-    await onBulkSave(toInsert, toUpdate);
-    setSaving(false);
-    onClose();
-  };
-
-  const newCount      = parsed.filter((p) => !snapshots.find((s) => s.periodDate === p.periodDate)).length;
-  const updateCount   = parsed.length - newCount;
-
-  const downloadTemplate = () => {
-    const header = ["date","total_events","total_users","events_per_user",...STAGE_DEFS.map((d) => d.name)].join(",");
-    const example = ["2026-03-01","1500","450","3.33",...STAGE_DEFS.map(() => "0")].join(",");
-    const csv = header + "\n" + example;
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = "plantilla-mes.csv";
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {step === "upload" ? "Cargar mes completo" : `Vista previa · ${parsed.length} día${parsed.length !== 1 ? "s" : ""} detectado${parsed.length !== 1 ? "s" : ""}`}
-          </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="overflow-y-auto flex-1 px-6 py-5">
-          {step === "upload" && (
-            <div className="space-y-4">
-              <div
-                className="border-2 border-dashed border-gray-300 rounded-xl p-10 flex flex-col items-center gap-4 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors"
-                onClick={() => fileRef.current?.click()}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-              >
-                {loading ? (
-                  <>
-                    <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm text-gray-600">Procesando CSV...</p>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center">
-                      <svg className="w-7 h-7 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <div className="text-center">
-                      <p className="font-medium text-gray-900">Arrastrá el CSV de Google Analytics</p>
-                      <p className="text-sm text-gray-500 mt-1">Reporte de "Eventos" con "Fecha" como dimensión secundaria</p>
-                    </div>
-                    <button className="mt-1 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700">
-                      Seleccionar archivo
-                    </button>
-                  </>
-                )}
-                <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-              </div>
-              <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600 space-y-1">
-                <p className="font-medium text-gray-700">Cómo exportar desde GA4:</p>
-                <p>1. Reportes → Engagement → Eventos</p>
-                <p>2. Agregar dimensión secundaria: <strong>Fecha</strong></p>
-                <p>3. Seleccionar el mes completo como rango de fechas</p>
-                <p>4. Exportar → Descargar CSV</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={downloadTemplate} className="text-xs text-purple-600 hover:underline flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
-                  Descargar plantilla CSV manual
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === "preview" && (
-            <div className="space-y-4">
-              {parsed.length === 0 ? (
-                <div className="text-center py-10 text-gray-500 text-sm">
-                  No se detectaron datos válidos en el archivo. Verificá el formato del CSV.
-                </div>
-              ) : (
-                <>
-                  <div className="flex gap-3">
-                    {newCount > 0 && (
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                        {newCount} días nuevos
-                      </span>
-                    )}
-                    {updateCount > 0 && (
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                        {updateCount} días a actualizar
-                      </span>
-                    )}
-                  </div>
-                  <div className="overflow-x-auto rounded-xl border border-gray-200">
-                    <table className="w-full text-xs">
-                      <thead className="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                          <th className="text-left px-3 py-2 font-semibold text-gray-500">Fecha</th>
-                          <th className="text-right px-3 py-2 font-semibold text-gray-500">Eventos</th>
-                          <th className="text-right px-3 py-2 font-semibold text-gray-500">Usuarios</th>
-                          <th className="text-right px-3 py-2 font-semibold text-gray-500">Cupones gen.</th>
-                          <th className="text-right px-3 py-2 font-semibold text-gray-500">Page views</th>
-                          <th className="text-center px-3 py-2 font-semibold text-gray-500">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {parsed.map((p) => {
-                          const isNew = !snapshots.find((s) => s.periodDate === p.periodDate);
-                          const cupones = p.funnel?.find((f) => f.eventName === "cupon_generado")?.events ?? 0;
-                          const pv      = p.funnel?.find((f) => f.eventName === "page_view")?.events ?? 0;
-                          return (
-                            <tr key={p.periodDate} className="hover:bg-gray-50">
-                              <td className="px-3 py-2 font-medium text-gray-800">{p.periodLabel ?? p.periodDate}</td>
-                              <td className="px-3 py-2 text-right tabular-nums">{(p.totalEvents ?? 0).toLocaleString("es-ES")}</td>
-                              <td className="px-3 py-2 text-right tabular-nums text-gray-500">{(p.totalUsers ?? 0).toLocaleString("es-ES")}</td>
-                              <td className="px-3 py-2 text-right tabular-nums text-purple-600 font-semibold">{cupones.toLocaleString("es-ES")}</td>
-                              <td className="px-3 py-2 text-right tabular-nums text-gray-500">{pv.toLocaleString("es-ES")}</td>
-                              <td className="px-3 py-2 text-center">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isNew ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-                                  {isNew ? "Nuevo" : "Actualizar"}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-between items-center">
-          {step === "preview" ? (
-            <>
-              <button onClick={() => setStep("upload")} className="text-sm text-gray-500 hover:text-gray-700">
-                ← Cargar otro archivo
-              </button>
-              <div className="flex gap-3">
-                <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving || parsed.length === 0}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg ${parsed.length > 0 && !saving ? "bg-purple-600 text-white hover:bg-purple-700" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
-                >
-                  {saving ? "Guardando..." : `Guardar ${parsed.length} día${parsed.length !== 1 ? "s" : ""}`}
-                </button>
-              </div>
-            </>
-          ) : (
-            <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">Cancelar</button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ─── Auto-insights ────────────────────────────────────────────────────────────
@@ -645,6 +321,7 @@ function UploadModal({
   snapshots,
   existingDates,
   latestDate,
+  country,
 }: {
   onClose: () => void;
   onSave: (s: DaySnapshot) => void;
@@ -652,6 +329,7 @@ function UploadModal({
   snapshots: DaySnapshot[];
   existingDates: string[];
   latestDate: string | null;
+  country: { code: CountryCode; name: string; flag: string };
 }) {
   const [step, setStep] = useState<"upload" | "review">("upload");
   const [loading, setLoading] = useState(false);
@@ -705,9 +383,15 @@ function UploadModal({
       <div className="bg-white rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">
-            {step === "upload" ? "Cargar reporte diario" : "Revisar datos del día"}
-          </h2>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {step === "upload" ? "Cargar reporte diario" : "Revisar datos del día"}
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
+              <span className="text-sm leading-none">{country.flag}</span>
+              <span>Los datos se asociarán a <strong className="text-gray-700">{country.name}</strong></span>
+            </p>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2688,283 +2372,19 @@ function CuponesView() {
   );
 }
 
-// ─── PDF Report ───────────────────────────────────────────────────────────────
-
-function buildReportHTML(snapshots: DaySnapshot[], campaigns: Campaign[], currentSnap: DaySnapshot | null, previousSnap: DaySnapshot | null): string {
-  const today = new Date();
-  const currentMonth = today.toISOString().slice(0, 7);
-  const monthSnaps = snapshots.filter((s) => s.periodDate.startsWith(currentMonth));
-  const reportSnaps = monthSnaps.length > 0 ? monthSnaps : snapshots;
-  const sortedSnaps = [...reportSnaps].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
-
-  const totalEvents    = reportSnaps.reduce((s, snap) => s + snap.totalEvents, 0);
-  const totalUsers     = reportSnaps.reduce((s, snap) => s + snap.totalUsers, 0);
-  const totalGenerated = reportSnaps.reduce((s, snap) => s + (snap.funnel.find((f) => f.eventName === "cupon_generado")?.events ?? 0), 0);
-  const totalRedeemed  = reportSnaps.reduce((s, snap) => s + (snap.funnel.find((f) => f.eventName === "cupones_canjeados")?.events ?? 0), 0);
-
-  const funnelRows = STAGE_DEFS.map((def) => ({
-    label: def.label,
-    events: reportSnaps.reduce((s, snap) => s + (snap.funnel.find((f) => f.eventName === def.name)?.events ?? 0), 0),
-  })).sort((a, b) => b.events - a.events);
-
-  const dateStr   = today.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
-  const periodStr = sortedSnaps.length > 0
-    ? `${sortedSnaps[0].periodLabel} – ${sortedSnaps[sortedSnaps.length - 1].periodLabel}`
-    : dateStr;
-
-  const campTotalCoupons   = campaigns.reduce((s, c) => s + c.couponCount, 0);
-  const campTotalGenerated = campaigns.reduce((s, c) => s + (c.couponsGenerated ?? 0), 0);
-  const campTotalUsed      = campaigns.reduce((s, c) => s + c.couponsUsed, 0);
-  const campTotalAvail     = campTotalCoupons - campTotalUsed;
-  const campActiveCount    = campaigns.filter((c) => c.status === "Activo").length;
-
-  const n   = (v: number) => v.toLocaleString("es-ES");
-  const pct = (a: number, b: number) => b > 0 ? ((a / b) * 100).toFixed(1) + "%" : "—";
-
-  const statusStyle: Record<string, string> = {
-    Activo:         "background:#dcfce7;color:#16a34a",
-    "Por comenzar": "background:#dbeafe;color:#2563eb",
-    Borrador:       "background:#fef3c7;color:#d97706",
-    Cancelado:      "background:#fee2e2;color:#dc2626",
-    Finalizado:     "background:#f3f4f6;color:#6b7280",
-    Inactivo:       "background:#f3f4f6;color:#9ca3af",
-  };
-
-  const funnelHTML = funnelRows.map(({ label, events }, i) => `
-    <tr style="background:${i % 2 === 0 ? "#fff" : "#fafafa"}">
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;color:#374151">${label}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#1a1a2e">${n(events)}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">${totalEvents > 0 ? ((events / totalEvents) * 100).toFixed(2) + "%" : "—"}</td>
-    </tr>`).join("");
-
-  const campaignHTML = campaigns.map((c, i) => {
-    const available = c.couponCount - c.couponsUsed;
-    const usedPct   = c.couponCount > 0 ? ((c.couponsUsed / c.couponCount) * 100).toFixed(0) : "0";
-    const totalPts  = c.couponCount * c.pointsPerCoupon;
-    const usedPts   = c.couponsUsed * c.pointsPerCoupon;
-    const sym       = c.currency ? getCurrencySymbol(c.currency) : null;
-    const totalVal  = c.valuePerCoupon != null ? c.couponCount * c.valuePerCoupon : null;
-    const usedVal   = c.valuePerCoupon != null ? c.couponsUsed * c.valuePerCoupon : null;
-    const ss        = statusStyle[c.status] ?? "background:#f3f4f6;color:#6b7280";
-    const bg        = i % 2 === 0 ? "#fff" : "#fafafa";
-    return `
-    <tr style="background:${bg}">
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6">
-        <div style="font-weight:600;color:#111827;font-size:12px">${c.name}</div>
-        <div style="font-size:10px;color:#9ca3af;margin-top:2px">${c.startDate} – ${c.endDate}</div>
-      </td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#111827">${n(c.couponCount)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">${c.couponsGenerated != null ? n(c.couponsGenerated) : "—"}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">
-        <span style="font-weight:600;color:#111827">${n(c.couponsUsed)}</span>${c.couponsUsed > 0 ? `<span style="font-size:10px;color:#9ca3af;margin-left:3px">(${usedPct}%)</span>` : ""}
-      </td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">${n(available)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6;text-align:right;white-space:nowrap">
-        ${totalPts > 0 ? `<span style="font-weight:600;color:#111827">${n(totalPts)}</span><span style="color:#9ca3af"> / ${n(usedPts)}</span>` : '<span style="color:#d1d5db">—</span>'}
-      </td>
-      <td style="padding:8px 10px;border-bottom:1px solid #f3f4f6">
-        <span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;${ss}">${c.status}</span>
-      </td>
-    </tr>`;
-  }).join("");
-
-  // ── Daily comparison ──
-  const chg = (curr: number, prev: number | null | undefined) => {
-    if (prev == null || prev === 0) return "";
-    const v = ((curr - prev) / prev) * 100;
-    const color = v >= 0 ? "#16a34a" : "#dc2626";
-    return `<span style="font-size:11px;font-weight:600;color:${color};margin-left:6px">${v >= 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
-  };
-
-  const kpiRowsHTML = currentSnap ? [
-    { label: "Eventos totales",    curr: currentSnap.totalEvents,  prev: previousSnap?.totalEvents,   dec: false },
-    { label: "Usuarios",           curr: currentSnap.totalUsers,   prev: previousSnap?.totalUsers,    dec: false },
-    { label: "Eventos por usuario",curr: currentSnap.eventsPerUser,prev: previousSnap?.eventsPerUser, dec: true  },
-    { label: "Cupones generados",  curr: currentSnap.funnel.find(f => f.eventName === "cupon_generado")?.events ?? 0,
-      prev: previousSnap?.funnel.find(f => f.eventName === "cupon_generado")?.events, dec: false },
-    { label: "Cupones canjeados",  curr: currentSnap.funnel.find(f => f.eventName === "cupones_canjeados")?.events ?? 0,
-      prev: previousSnap?.funnel.find(f => f.eventName === "cupones_canjeados")?.events, dec: false },
-  ].map(({ label, curr, prev, dec }, i) => `
-    <tr style="background:${i % 2 === 0 ? "#fff" : "#fafafa"}">
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;color:#374151;font-weight:500">${label}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:700;color:#1a1a2e">
-        ${dec ? curr.toFixed(2) : n(curr)}${chg(curr, prev)}
-      </td>
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">
-        ${prev != null ? (dec ? prev.toFixed(2) : n(prev)) : "—"}
-      </td>
-    </tr>`).join("") : "";
-
-  const pv = currentSnap?.funnel.find(f => f.eventName === "page_view");
-  const funnelDayHTML = currentSnap ? STAGE_DEFS.map((def) => {
-    const curr = currentSnap.funnel.find(f => f.eventName === def.name)?.events ?? 0;
-    const prev = previousSnap?.funnel.find(f => f.eventName === def.name)?.events ?? null;
-    const conv = pv && pv.events > 0 && def.name !== "page_view" ? ((curr / pv.events) * 100).toFixed(1) + "%" : "—";
-    return { label: def.label, curr, prev, conv };
-  }).sort((a, b) => b.curr - a.curr).map(({ label, curr, prev, conv }, i) => `
-    <tr style="background:${i % 2 === 0 ? "#fff" : "#fafafa"}">
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;color:#374151">${label}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:#1a1a2e">
-        ${n(curr)}${chg(curr, prev)}
-      </td>
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;color:#6b7280">${prev != null ? n(prev) : "—"}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-weight:600;color:${conv === "—" ? "#9ca3af" : parseFloat(conv) < 10 ? "#ea580c" : "#16a34a"}">${conv}</td>
-    </tr>`).join("") : "";
-
-  const daySection = currentSnap ? `
-    <div class="pb"></div>
-    <div style="border-bottom:2px solid #7c3aed;padding-bottom:12px;margin-bottom:20px">
-      <div style="font-size:18px;font-weight:800">Análisis del Día · ${currentSnap.periodLabel}</div>
-      <div style="font-size:12px;color:#6b7280;margin-top:4px">
-        ${previousSnap ? `Comparación: vs ${previousSnap.periodLabel}` : "Sin comparación disponible"} · ${currentSnap.source}
-      </div>
-    </div>
-    <div style="font-size:15px;font-weight:700;margin-bottom:10px">KPIs Principales</div>
-    <table style="margin-bottom:24px">
-      <thead><tr>
-        <th style="text-align:left">Métrica</th>
-        <th style="text-align:right">${currentSnap.periodLabel}</th>
-        <th style="text-align:right">${previousSnap ? previousSnap.periodLabel : "Anterior"}</th>
-      </tr></thead>
-      <tbody>${kpiRowsHTML}</tbody>
-    </table>
-    <div style="font-size:15px;font-weight:700;margin-bottom:10px">Funnel Digital</div>
-    <table style="margin-bottom:32px">
-      <thead><tr>
-        <th style="text-align:left">Etapa</th>
-        <th style="text-align:right">Eventos</th>
-        <th style="text-align:right">Anterior</th>
-        <th style="text-align:right">Conversión</th>
-      </tr></thead>
-      <tbody>${funnelDayHTML}</tbody>
-    </table>` : "";
-
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Reporte Funnel · Cuponera Pepsi · ${dateStr}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a1a2e;background:#fff;font-size:13px;line-height:1.5}
-    .page{padding:40px 48px;max-width:860px;margin:0 auto}
-    h2{font-size:15px;font-weight:700}
-    table{width:100%;border-collapse:collapse}
-    th{font-size:11px;font-weight:700;color:#6b7280;background:#f9fafb;padding:9px 10px;border-bottom:1px solid #e5e7eb}
-    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-    .card{border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fff}
-    .clabel{font-size:11px;color:#6b7280;margin-bottom:4px}
-    .cval{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
-    .csub{font-size:10px;color:#9ca3af;margin-top:3px}
-    .toolbar{position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:100}
-    .btn-p{background:#7c3aed;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
-    .btn-c{background:#fff;color:#6b7280;border:1px solid #e5e7eb;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
-    @media print{
-      *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-      @page{margin:1.2cm;size:A4 portrait}
-      .toolbar{display:none!important}
-      .pb{page-break-before:always}
-    }
-  </style>
-</head>
-<body>
-  <div class="toolbar">
-    <button class="btn-c" onclick="window.close()">Cerrar</button>
-    <button class="btn-p" onclick="window.print()">&#8595; Guardar como PDF</button>
-  </div>
-  <div class="page">
-    <!-- Header -->
-    <div style="border-bottom:2px solid #7c3aed;padding-bottom:16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start">
-      <div>
-        <div style="font-size:22px;font-weight:800;color:#1a1a2e">Análisis Funnel · Cuponera Pepsi</div>
-        <div style="font-size:13px;color:#6b7280;margin-top:4px">Monitoreo diario · Google Analytics</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:11px;color:#6b7280">Generado el</div>
-        <div style="font-size:13px;font-weight:600;margin-top:2px">${dateStr}</div>
-        <div style="font-size:12px;color:#7c3aed;margin-top:2px">${reportSnaps.length} día${reportSnaps.length !== 1 ? "s" : ""} cargado${reportSnaps.length !== 1 ? "s" : ""}</div>
-        <div style="font-size:11px;color:#9ca3af;margin-top:2px">${periodStr}</div>
-      </div>
-    </div>
-
-    <!-- KPIs -->
-    <div style="font-size:15px;font-weight:700;margin-bottom:12px">Indicadores del Período</div>
-    <div class="grid4" style="margin-bottom:28px">
-      <div class="card"><div class="clabel">Eventos totales</div><div class="cval" style="color:#1a73e8">${n(totalEvents)}</div></div>
-      <div class="card"><div class="clabel">Usuarios únicos</div><div class="cval" style="color:#34a853">${n(totalUsers)}</div></div>
-      <div class="card"><div class="clabel">Cupones generados</div><div class="cval" style="color:#7c3aed">${n(totalGenerated)}</div></div>
-      <div class="card"><div class="clabel">Cupones canjeados</div><div class="cval" style="color:#f4511e">${n(totalRedeemed)}</div></div>
-    </div>
-
-    <!-- Funnel -->
-    <div style="font-size:15px;font-weight:700;margin-bottom:10px">Funnel Digital — Acumulado del Período</div>
-    <table style="margin-bottom:32px">
-      <thead><tr>
-        <th style="text-align:left">Etapa del Funnel</th>
-        <th style="text-align:right">Total eventos</th>
-        <th style="text-align:right">% del total</th>
-      </tr></thead>
-      <tbody>
-        ${funnelHTML}
-        <tr style="background:#f0fdf4;border-top:2px solid #86efac">
-          <td style="padding:9px 12px;font-weight:700;color:#166534">Conversión final (cupones generados)</td>
-          <td style="padding:9px 12px;text-align:right;font-weight:700;color:#166534">${n(totalGenerated)}</td>
-          <td style="padding:9px 12px;text-align:right;font-weight:700;color:#166534">${pct(totalGenerated, totalEvents)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    ${daySection}
-
-    <!-- Campaigns -->
-    <div class="pb"></div>
-    <div style="border-bottom:2px solid #7c3aed;padding-bottom:12px;margin-bottom:20px">
-      <div style="font-size:18px;font-weight:800">Campañas de Cupones</div>
-      <div style="font-size:12px;color:#6b7280;margin-top:2px">Canjeados a la fecha · ${dateStr}</div>
-    </div>
-    <div class="grid4" style="margin-bottom:16px">
-      <div class="card"><div class="clabel">Total emitidos</div><div class="cval">${n(campTotalCoupons)}</div><div class="csub">en ${campaigns.length} campaña${campaigns.length !== 1 ? "s" : ""}</div></div>
-      <div class="card"><div class="clabel">Cupones generados</div><div class="cval">${n(campTotalGenerated)}</div><div class="csub">${pct(campTotalGenerated, campTotalCoupons)} del total</div></div>
-      <div class="card"><div class="clabel">Cupones canjeados</div><div class="cval">${n(campTotalUsed)}</div><div class="csub">${pct(campTotalUsed, campTotalCoupons)} del total</div></div>
-      <div class="card"><div class="clabel">Campañas activas</div><div class="cval">${campActiveCount}</div><div class="csub">${n(campTotalAvail)} cupones disponibles</div></div>
-    </div>
-    <table>
-      <thead><tr>
-        <th>Nombre de campaña</th>
-        <th style="text-align:right">Total</th>
-        <th style="text-align:right">Generados</th>
-        <th style="text-align:right">Canjeados</th>
-        <th style="text-align:right">Disponibles</th>
-        <th style="text-align:right">Puntos</th>
-        <th>Estado</th>
-      </tr></thead>
-      <tbody>${campaignHTML}</tbody>
-    </table>
-
-    <!-- Footer -->
-    <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between">
-      <span style="font-size:10px;color:#9ca3af">Cuponera Pepsi · Análisis Funnel</span>
-      <span style="font-size:10px;color:#9ca3af">Generado el ${dateStr}</span>
-    </div>
-  </div>
-</body>
-</html>`;
-}
-
-
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
-function EmptyState({ onUpload }: { onUpload: () => void }) {
+function EmptyState({ onUpload, country }: { onUpload: () => void; country: { code: CountryCode; name: string; flag: string } }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
-        <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
+      <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4 text-3xl">
+        {country.flag}
       </div>
-      <h2 className="text-lg font-semibold text-gray-900 mb-2">Sin datos de funnel</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-2">
+        Sin datos de funnel para {country.name}
+      </h2>
       <p className="text-sm text-gray-500 max-w-sm mb-6">
-        Cargá el primer reporte diario. Cada día que subas se comparará automáticamente con el anterior.
+        Cargá el primer reporte diario de {country.name}. Cada día que subas se comparará automáticamente con el anterior.
       </p>
       <button
         onClick={onUpload}
@@ -2983,14 +2403,14 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
 
 export default function AnalisisFunnelPage() {
   const { isAuthenticated } = useAuth();
-  const { campaigns } = useCampaigns();
   const [snapshots, setSnapshots] = useState<DaySnapshot[]>([]);
   const [view, setView] = useState<"dashboard" | "rendimiento" | "historico" | "cupones">("dashboard");
   const [period, setPeriod] = useState<Period>("semana");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [comparisonId, setComparisonId] = useState<string | "none" | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [monthUploadOpen, setMonthUploadOpen] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState<CountryCode>("GT");
+  const [countryMenuOpen, setCountryMenuOpen] = useState(false);
 
   useEffect(() => {
     supabase
@@ -3009,63 +2429,54 @@ export default function AnalisisFunnelPage() {
             totalUsers: row.total_users as number,
             eventsPerUser: row.events_per_user as number,
             funnel: (row.funnel as DayStage[]) ?? [],
+            country: ((row.country as CountryCode | null) ?? "GT") as CountryCode,
           })));
         }
       });
   }, []);
 
+  useEffect(() => {
+    setSelectedId(null);
+    setComparisonId(null);
+  }, [selectedCountry]);
+
   const addSnapshot = async (s: DaySnapshot) => {
+    const tagged: DaySnapshot = { ...s, country: s.country ?? selectedCountry };
     await supabase.from("funnel_snapshots").insert({
-      id: s.id,
-      saved_at: s.savedAt,
-      period_label: s.periodLabel,
-      period_date: s.periodDate,
-      source: s.source,
-      total_events: s.totalEvents,
-      total_users: s.totalUsers,
-      events_per_user: s.eventsPerUser,
-      funnel: s.funnel,
+      id: tagged.id,
+      saved_at: tagged.savedAt,
+      period_label: tagged.periodLabel,
+      period_date: tagged.periodDate,
+      source: tagged.source,
+      total_events: tagged.totalEvents,
+      total_users: tagged.totalUsers,
+      events_per_user: tagged.eventsPerUser,
+      funnel: tagged.funnel,
+      country: tagged.country,
     });
-    setSnapshots((prev) => [...prev, s]);
+    setSnapshots((prev) => [...prev, tagged]);
   };
 
   const replaceSnapshot = async (existingId: string, s: DaySnapshot) => {
+    const tagged: DaySnapshot = { ...s, country: s.country ?? selectedCountry };
     await supabase.from("funnel_snapshots").update({
-      saved_at: s.savedAt,
-      period_label: s.periodLabel,
-      period_date: s.periodDate,
-      source: s.source,
-      total_events: s.totalEvents,
-      total_users: s.totalUsers,
-      events_per_user: s.eventsPerUser,
-      funnel: s.funnel,
+      saved_at: tagged.savedAt,
+      period_label: tagged.periodLabel,
+      period_date: tagged.periodDate,
+      source: tagged.source,
+      total_events: tagged.totalEvents,
+      total_users: tagged.totalUsers,
+      events_per_user: tagged.eventsPerUser,
+      funnel: tagged.funnel,
+      country: tagged.country,
     }).eq("id", existingId);
-    setSnapshots((prev) => prev.map((snap) => snap.id === existingId ? { ...s, id: existingId } : snap));
+    setSnapshots((prev) => prev.map((snap) => snap.id === existingId ? { ...tagged, id: existingId } : snap));
   };
 
   const deleteSnapshot = async (id: string) => {
     await supabase.from("funnel_snapshots").delete().eq("id", id);
     setSnapshots((prev) => prev.filter((s) => s.id !== id));
     if (selectedId === id) setSelectedId(null);
-  };
-
-  const bulkSaveSnapshots = async (
-    toInsert: DaySnapshot[],
-    toUpdate: { id: string; snap: DaySnapshot }[]
-  ) => {
-    const toRow = (s: DaySnapshot) => ({
-      id: s.id, saved_at: s.savedAt, period_label: s.periodLabel, period_date: s.periodDate,
-      source: s.source, total_events: s.totalEvents, total_users: s.totalUsers,
-      events_per_user: s.eventsPerUser, funnel: s.funnel,
-    });
-    if (toInsert.length > 0) {
-      await supabase.from("funnel_snapshots").insert(toInsert.map(toRow));
-      setSnapshots((prev) => [...prev, ...toInsert]);
-    }
-    for (const { id, snap } of toUpdate) {
-      await supabase.from("funnel_snapshots").update(toRow(snap)).eq("id", id);
-      setSnapshots((prev) => prev.map((s) => (s.id === id ? snap : s)));
-    }
   };
 
   const updateSnapshotEvent = async (snapshotId: string, eventName: string, value: number) => {
@@ -3083,21 +2494,26 @@ export default function AnalisisFunnelPage() {
     );
   };
 
-  // Ordenado desc por fecha
-  const sorted = [...snapshots].sort((a, b) => b.periodDate.localeCompare(a.periodDate));
+  // Filtrar por país seleccionado (data legacy sin país se asume GT)
+  const countrySnapshots = snapshots.filter((s) => (s.country ?? "GT") === selectedCountry);
 
-  const currentSnap = (selectedId ? snapshots.find((s) => s.id === selectedId) : null) ?? sorted[0] ?? null;
+  // Ordenado desc por fecha
+  const sorted = [...countrySnapshots].sort((a, b) => b.periodDate.localeCompare(a.periodDate));
+
+  const currentSnap = (selectedId ? countrySnapshots.find((s) => s.id === selectedId) : null) ?? sorted[0] ?? null;
 
   // El "anterior": puede ser el auto-previo, uno elegido, o ninguno
   const previousSnap: DaySnapshot | null = (() => {
     if (!currentSnap) return null;
     if (comparisonId === "none") return null;
-    if (comparisonId) return snapshots.find((s) => s.id === comparisonId) ?? null;
+    if (comparisonId) return countrySnapshots.find((s) => s.id === comparisonId) ?? null;
     return sorted.find((s) => s.id !== currentSnap.id && s.periodDate < currentSnap.periodDate) ?? null;
   })();
 
   const latestDate = sorted[0]?.periodDate ?? null;
-  const existingDates = snapshots.map((s) => s.periodDate);
+  const existingDates = countrySnapshots.map((s) => s.periodDate);
+
+  const activeCountry = COUNTRIES.find((c) => c.code === selectedCountry)!;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -3115,64 +2531,54 @@ export default function AnalisisFunnelPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {snapshots.length > 0 && (
-            <>
-              <button
-                onClick={() => {
-                  const html = buildReportHTML(snapshots, campaigns, currentSnap, previousSnap);
-                  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = "reporte-funnel-pepsi.html";
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                Descargar HTML
-              </button>
-              <button
-                onClick={() => {
-                  const html = buildReportHTML(snapshots, campaigns, currentSnap, previousSnap);
-                  const win = window.open("", "_blank");
-                  if (win) { win.document.write(html); win.document.close(); }
-                }}
-                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Exportar PDF
-              </button>
-            </>
-          )}
+          <div className="relative">
+            <button
+              onClick={() => setCountryMenuOpen((o) => !o)}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
+            >
+              <span className="text-base leading-none">{activeCountry.flag}</span>
+              <span>{activeCountry.name}</span>
+              <svg className={`w-4 h-4 text-gray-400 transition-transform ${countryMenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {countryMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setCountryMenuOpen(false)} />
+                <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg shadow-lg border border-gray-200 z-20 overflow-hidden">
+                  {COUNTRIES.map((c) => {
+                    const count = snapshots.filter((s) => (s.country ?? "GT") === c.code).length;
+                    const isActive = c.code === selectedCountry;
+                    return (
+                      <button
+                        key={c.code}
+                        onClick={() => { setSelectedCountry(c.code); setCountryMenuOpen(false); }}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${isActive ? "bg-purple-50 text-purple-700" : "text-gray-700"}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-base leading-none">{c.flag}</span>
+                          <span className="font-medium">{c.name}</span>
+                        </span>
+                        <span className={`text-xs ${count > 0 ? "text-gray-500" : "text-gray-400"}`}>
+                          {count} día{count !== 1 ? "s" : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
           {isAuthenticated && (
-            <>
-              <button
-                onClick={() => setMonthUploadOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm border border-gray-200"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Cargar mes
-              </button>
-              <button
-                onClick={() => setUploadOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                Cargar día
-              </button>
-            </>
+            <button
+              onClick={() => setUploadOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Cargar día
+            </button>
           )}
         </div>
       </div>
@@ -3204,13 +2610,13 @@ export default function AnalisisFunnelPage() {
 
       {/* Content */}
       {view === "dashboard" && (
-        snapshots.length === 0
-          ? <EmptyState onUpload={() => setUploadOpen(true)} />
-          : <DashboardView snapshots={snapshots} onUpdateManual={updateSnapshotEvent} canEdit={isAuthenticated} />
+        countrySnapshots.length === 0
+          ? <EmptyState onUpload={() => setUploadOpen(true)} country={activeCountry} />
+          : <DashboardView snapshots={countrySnapshots} onUpdateManual={updateSnapshotEvent} canEdit={isAuthenticated} />
       )}
       {view === "rendimiento" && (
         <RendimientoView
-          snapshots={snapshots}
+          snapshots={countrySnapshots}
           currentSnap={currentSnap}
           previousSnap={previousSnap}
           setSelectedId={setSelectedId}
@@ -3221,7 +2627,7 @@ export default function AnalisisFunnelPage() {
       {view === "cupones" && <CuponesView />}
       {view === "historico" && (
         <Historical
-          snapshots={snapshots}
+          snapshots={countrySnapshots}
           period={period}
           setPeriod={setPeriod}
           onSelect={(s) => { setSelectedId(s.id); setView("rendimiento"); }}
@@ -3230,33 +2636,23 @@ export default function AnalisisFunnelPage() {
         />
       )}
 
-      {monthUploadOpen && (
-        <MonthUploadModal
-          onClose={() => setMonthUploadOpen(false)}
-          onBulkSave={async (toInsert, toUpdate) => {
-            await bulkSaveSnapshots(toInsert, toUpdate);
-            setView("dashboard");
-          }}
-          snapshots={snapshots}
-        />
-      )}
-
       {uploadOpen && (
         <UploadModal
           onClose={() => setUploadOpen(false)}
           onSave={(s) => {
-            addSnapshot(s);
+            addSnapshot({ ...s, country: selectedCountry });
             setSelectedId(s.id);
             setView("dashboard");
             setUploadOpen(false);
           }}
           onUpdate={async (existingId, s) => {
-            await replaceSnapshot(existingId, s);
+            await replaceSnapshot(existingId, { ...s, country: selectedCountry });
             setView("dashboard");
           }}
-          snapshots={snapshots}
+          snapshots={countrySnapshots}
           existingDates={existingDates}
           latestDate={latestDate}
+          country={activeCountry}
         />
       )}
 
