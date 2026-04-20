@@ -1001,81 +1001,39 @@ const MONTH_NAMES: Record<string, string> = {
 };
 
 function EventsChart({
-  snapshots,
-  selectedMonth,
+  filteredSnapshots,
+  availableMonths,
+  effectiveMonth,
   onMonthChange,
+  granularity,
+  onGranularityChange,
+  selectedWeek,
+  onSelectedWeekChange,
+  fromDate,
+  onFromDateChange,
+  toDate,
+  onToDateChange,
+  weekRanges,
+  minDate,
+  maxDate,
 }: {
-  snapshots: DaySnapshot[];
-  selectedMonth: string;
+  filteredSnapshots: DaySnapshot[];
+  availableMonths: string[];
+  effectiveMonth: string;
   onMonthChange: (month: string) => void;
+  granularity: "mensual" | "semanal" | "dias";
+  onGranularityChange: (g: "mensual" | "semanal" | "dias") => void;
+  selectedWeek: number;
+  onSelectedWeekChange: (w: number) => void;
+  fromDate: string;
+  onFromDateChange: (d: string) => void;
+  toDate: string;
+  onToDateChange: (d: string) => void;
+  weekRanges: { label: string; from: number; to: number }[];
+  minDate: string;
+  maxDate: string;
 }) {
-  const allSorted = [...snapshots].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
-
-  // Meses disponibles a partir de los datos (ej: "2026-03")
-  const availableMonths = Array.from(
-    new Set(allSorted.map((s) => s.periodDate.slice(0, 7)))
-  ).sort();
-
-  const latestMonth = availableMonths[availableMonths.length - 1] ?? "";
-
-  // ─── Granularity state ───────────────────────────────────────────────────────
-  const [granularity, setGranularity] = useState<"mensual" | "semanal" | "dias">("mensual");
-  const [selectedWeek, setSelectedWeek] = useState<number>(1);
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
-
-  // Sincronizar si llegan nuevos datos
-  const effectiveMonth = availableMonths.includes(selectedMonth) ? selectedMonth : latestMonth;
-
-  // Days available in the selected month
-  const daysInMonth = allSorted.filter((s) => s.periodDate.startsWith(effectiveMonth));
-
-  // Week ranges within the selected month (groups of 7 starting day 1)
-  const weekRanges = (() => {
-    const days = Array.from(new Set(daysInMonth.map((s) => s.periodDate))).sort();
-    if (days.length === 0) return [];
-    const firstDay = parseInt(days[0].split("-")[2], 10);
-    const lastDay  = parseInt(days[days.length - 1].split("-")[2], 10);
-    const ranges: { label: string; from: number; to: number }[] = [];
-    for (let start = 1; start <= lastDay; start += 7) {
-      const end = Math.min(start + 6, lastDay);
-      if (start <= lastDay) {
-        ranges.push({
-          label: `${start} – ${end} ${MONTH_NAMES[effectiveMonth.split("-")[1]] ?? ""} ${effectiveMonth.split("-")[0]}`,
-          from: start,
-          to: end,
-        });
-      }
-    }
-    return ranges;
-  })();
-
-  // Available dates in month for "dias" pickers
-  const availableDatesInMonth = Array.from(
-    new Set(daysInMonth.map((s) => s.periodDate))
-  ).sort();
-  const minDate = availableDatesInMonth[0] ?? "";
-  const maxDate = availableDatesInMonth[availableDatesInMonth.length - 1] ?? "";
-
-  // ─── Filtered data based on granularity ─────────────────────────────────────
-  const sorted = (() => {
-    const base = daysInMonth;
-    if (granularity === "mensual") return base;
-    if (granularity === "semanal") {
-      const range = weekRanges[selectedWeek - 1];
-      if (!range) return base;
-      return base.filter((s) => {
-        const day = parseInt(s.periodDate.split("-")[2], 10);
-        return day >= range.from && day <= range.to;
-      });
-    }
-    if (granularity === "dias") {
-      const f = fromDate || minDate;
-      const t = toDate || maxDate;
-      return base.filter((s) => s.periodDate >= f && s.periodDate <= t);
-    }
-    return base;
-  })();
+  const sorted = [...filteredSnapshots].sort((a, b) => a.periodDate.localeCompare(b.periodDate));
 
   const [visible, setVisible] = useState<Set<string>>(
     () => new Set(["total", ...STAGE_DEFS.map((d) => d.name)])
@@ -1140,7 +1098,7 @@ function EventsChart({
             {(["mensual", "semanal", "dias"] as const).map((g) => (
               <button
                 key={g}
-                onClick={() => setGranularity(g)}
+                onClick={() => onGranularityChange(g)}
                 className={`px-3 py-1.5 rounded-md transition-colors capitalize ${
                   granularity === g
                     ? "bg-white text-purple-700 shadow-sm font-semibold"
@@ -1155,7 +1113,7 @@ function EventsChart({
           {/* Month picker — always visible */}
           <select
             value={effectiveMonth}
-            onChange={(e) => { onMonthChange(e.target.value); setSelectedWeek(1); setFromDate(""); setToDate(""); }}
+            onChange={(e) => onMonthChange(e.target.value)}
             className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
           >
             {availableMonths.map((m) => {
@@ -1172,7 +1130,7 @@ function EventsChart({
           {granularity === "semanal" && weekRanges.length > 0 && (
             <select
               value={selectedWeek}
-              onChange={(e) => setSelectedWeek(Number(e.target.value))}
+              onChange={(e) => onSelectedWeekChange(Number(e.target.value))}
               className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
             >
               {weekRanges.map((w, i) => (
@@ -1191,7 +1149,7 @@ function EventsChart({
                 value={fromDate || minDate}
                 min={minDate}
                 max={toDate || maxDate}
-                onChange={(e) => setFromDate(e.target.value)}
+                onChange={(e) => onFromDateChange(e.target.value)}
                 className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
               />
               <span className="text-xs text-gray-400">—</span>
@@ -1200,7 +1158,7 @@ function EventsChart({
                 value={toDate || maxDate}
                 min={fromDate || minDate}
                 max={maxDate}
-                onChange={(e) => setToDate(e.target.value)}
+                onChange={(e) => onToDateChange(e.target.value)}
                 className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
               />
             </div>
@@ -1567,7 +1525,58 @@ function DashboardView({
   const latestMonth = availableMonths[availableMonths.length - 1] ?? "";
   const [selectedMonth, setSelectedMonth] = useState<string>(latestMonth);
   const effectiveMonth = availableMonths.includes(selectedMonth) ? selectedMonth : latestMonth;
-  const monthSnapshots = snapshots.filter((s) => s.periodDate.startsWith(effectiveMonth));
+
+  const [granularity, setGranularity] = useState<"mensual" | "semanal" | "dias">("mensual");
+  const [selectedWeek, setSelectedWeek] = useState<number>(1);
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+
+  const monthSnapshots = allSorted.filter((s) => s.periodDate.startsWith(effectiveMonth));
+
+  const weekRanges = (() => {
+    const days = Array.from(new Set(monthSnapshots.map((s) => s.periodDate))).sort();
+    if (days.length === 0) return [];
+    const lastDay = parseInt(days[days.length - 1].split("-")[2], 10);
+    const ranges: { label: string; from: number; to: number }[] = [];
+    for (let start = 1; start <= lastDay; start += 7) {
+      const end = Math.min(start + 6, lastDay);
+      ranges.push({
+        label: `${start} – ${end} ${MONTH_NAMES[effectiveMonth.split("-")[1]] ?? ""} ${effectiveMonth.split("-")[0]}`,
+        from: start,
+        to: end,
+      });
+    }
+    return ranges;
+  })();
+
+  const availableDatesInMonth = Array.from(new Set(monthSnapshots.map((s) => s.periodDate))).sort();
+  const minDate = availableDatesInMonth[0] ?? "";
+  const maxDate = availableDatesInMonth[availableDatesInMonth.length - 1] ?? "";
+
+  const filteredSnapshots = (() => {
+    if (granularity === "mensual") return monthSnapshots;
+    if (granularity === "semanal") {
+      const range = weekRanges[selectedWeek - 1];
+      if (!range) return monthSnapshots;
+      return monthSnapshots.filter((s) => {
+        const day = parseInt(s.periodDate.split("-")[2], 10);
+        return day >= range.from && day <= range.to;
+      });
+    }
+    if (granularity === "dias") {
+      const f = fromDate || minDate;
+      const t = toDate || maxDate;
+      return monthSnapshots.filter((s) => s.periodDate >= f && s.periodDate <= t);
+    }
+    return monthSnapshots;
+  })();
+
+  const handleMonthChange = (m: string) => {
+    setSelectedMonth(m);
+    setSelectedWeek(1);
+    setFromDate("");
+    setToDate("");
+  };
 
   if (snapshots.length === 0) {
     return (
@@ -1578,8 +1587,24 @@ function DashboardView({
   }
   return (
     <div className="space-y-5">
-      <EventsChart snapshots={snapshots} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} />
-      <EventsTableGA4 snapshots={monthSnapshots} onUpdateManual={onUpdateManual} canEdit={canEdit} />
+      <EventsChart
+        filteredSnapshots={filteredSnapshots}
+        availableMonths={availableMonths}
+        effectiveMonth={effectiveMonth}
+        onMonthChange={handleMonthChange}
+        granularity={granularity}
+        onGranularityChange={setGranularity}
+        selectedWeek={selectedWeek}
+        onSelectedWeekChange={setSelectedWeek}
+        fromDate={fromDate}
+        onFromDateChange={setFromDate}
+        toDate={toDate}
+        onToDateChange={setToDate}
+        weekRanges={weekRanges}
+        minDate={minDate}
+        maxDate={maxDate}
+      />
+      <EventsTableGA4 snapshots={filteredSnapshots} onUpdateManual={onUpdateManual} canEdit={canEdit} />
     </div>
   );
 }
