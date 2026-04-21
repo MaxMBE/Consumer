@@ -1292,7 +1292,7 @@ function EventsChart({
   );
 }
 
-const MANUAL_EVENTS = new Set(["registro_usuario"]);
+const MANUAL_EVENTS = new Set(["registro_usuario", "cupones_canjeados"]);
 
 function ManualEditModal({
   eventName,
